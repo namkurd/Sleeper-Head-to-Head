@@ -11,12 +11,18 @@ GitHub Pages so it can be embedded live in the league's Google Site.
   file is never rewritten automatically** — it's the permanent source of
   truth for everything already played, so past totals never silently change.
 - `playoff_baseline.tsv` is the frozen **playoff** head-to-head record for
-  2021–2025 — every postseason matchup from back when the league was 10
-  teams, including the three years with a 3-team championship (highest
+  2010–2025 — every known postseason matchup from before this was tracked
+  on Sleeper, including the three years with a 3-team championship (highest
   score wins; the other two each take a loss, so those years contribute two
   results instead of one game). That format is retired now that the league
   is 12 teams — **2026 onward, playoff results are pulled automatically**
   from Sleeper's own bracket data, the same as the regular season.
+  - 2010 and 2011 are incomplete: only the finals matchup is fully known
+    (Jake over Zak in 2010; Ryan over Alex in 2011). Whoever each finalist
+    beat in the semifinal to get there isn't recorded, so that extra win is
+    credited to the finalist's career total with no opponent attached
+    (`PLAYOFF_IMPLIED_WINS` near the top of `build_matrix.py`) and shown
+    with an asterisk on the playoff table instead of being guessed at.
 - `build_matrix.py` runs on a schedule (once a day at 9:00 UTC, via GitHub
   Actions — see `.github/workflows/update.yml` to change the time).
   Each run:
@@ -50,7 +56,7 @@ If a future season goes back to some non-standard format (byes, a
 multi-team finale, etc.) that Sleeper's bracket API can't represent
 cleanly, add that season to `FROZEN_PLAYOFF_SEASONS` near the top of
 `build_matrix.py` and hand-enter its games in `playoff_baseline.tsv`
-(one `Winner<TAB>Loser` line per result) the same way 2021–2025 work.
+(one `Winner<TAB>Loser` line per result) the same way 2010–2025 work.
 
 No API key or login is needed anywhere — Sleeper's API is public read-only,
 and GitHub Actions' built-in token is what commits the update.

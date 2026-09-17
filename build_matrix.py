@@ -67,6 +67,22 @@ MAX_WEEKS_TO_CHECK = 18
 # automatically from Sleeper's own bracket data instead of by hand.
 FROZEN_PLAYOFF_SEASONS = {"2021", "2022", "2023", "2024", "2025"}
 
+# The playoff bracket record actually goes back to 2010, but 2010 and 2011
+# are incomplete -- only the finals matchup and who reached it are known,
+# not who either finalist beat in the semifinal round. Rather than guess an
+# opponent, that semifinal win is credited to the finalist's career total
+# with no head-to-head opponent attached (shown with an asterisk on the
+# playoff table). Both 2010 and 2011 already have their known finals game
+# recorded as a normal row in playoff_baseline.tsv (Ryan beat Alex in 2011;
+# Jake beat Zak in 2010) -- this dict is only the *unattached* extra win for
+# each finalist from advancing out of an unknown semifinal.
+PLAYOFF_IMPLIED_WINS = {
+    "Ryan": 1,   # 2011: won an unknown semifinal to reach the final
+    "Alex": 1,   # 2011: won an unknown semifinal to reach the final
+    "Jake": 1,   # 2010: won an unknown semifinal to reach the final
+    "Zak": 1,    # 2010: won an unknown semifinal to reach the final
+}
+
 # Sleeper user_id -> real manager name, verified against actual game results
 # (not a guess). Anyone not listed here falls back to their Sleeper display
 # name automatically, per instructions.
@@ -301,7 +317,10 @@ def build_matrix(pairs):
     return record, sorted(managers)
 
 
-def render_table_section(record, managers, section_id, title, subtitle):
+def render_table_section(record, managers, section_id, title, subtitle, implied_wins=None):
+    implied_wins = implied_wins or {}
+    managers = sorted(set(managers) | set(implied_wins))
+
     def cell(a, b):
         if a == b:
             return '<td class="diag">&mdash;</td>'
@@ -324,24 +343,37 @@ def render_table_section(record, managers, section_id, title, subtitle):
         return f'<td style="background:{bg}"><span class="rec">{w}-{l}</span></td>'
 
     def total_record(m):
-        w = sum(v[0] for v in record.get(m, {}).values())
+        w = sum(v[0] for v in record.get(m, {}).values()) + implied_wins.get(m, 0)
         l = sum(v[1] for v in record.get(m, {}).values())
         return w, l
 
     totals = {m: total_record(m) for m in managers}
     ordered = sorted(managers, key=lambda m: (-totals[m][0], totals[m][1], m))
+    any_implied = any(implied_wins.get(m) for m in ordered)
 
     header_cells = "".join(f'<th class="colhead">{m}</th>' for m in ordered)
     body_rows = []
     for m in ordered:
         w, l = totals[m]
         pct = f"{(w / (w + l) * 100):.1f}%" if (w + l) else "-"
+        star = "*" if implied_wins.get(m) else ""
         row_cells = "".join(cell(m, other) for other in ordered)
         body_rows.append(
             f'<tr><th class="rowhead">{m}</th>{row_cells}'
-            f'<td class="total">{w}-{l}<span class="pct">{pct}</span></td></tr>'
+            f'<td class="total">{w}-{l}{star}<span class="pct">{pct}</span></td></tr>'
         )
     body_html = "\n".join(body_rows)
+
+    footnote = ""
+    if any_implied:
+        footnote = (
+            '<p class="footnote">* includes a win with no recorded opponent '
+            "-- 2010 and 2011's brackets are incomplete: only who reached the "
+            "final and the final's result are known, not who each finalist "
+            "beat in the semifinal, so that semifinal win counts toward "
+            "their career total but isn't reflected in any single matchup "
+            "cell above.</p>"
+        )
 
     return f"""
   <section id="{section_id}">
@@ -355,6 +387,7 @@ def render_table_section(record, managers, section_id, title, subtitle):
     </tbody>
   </table>
   </div>
+  {footnote}
   </section>
 """
 
@@ -448,6 +481,12 @@ PAGE_STYLE = """
     font-size: 11px;
   }
   .rec { color: var(--ink); }
+  .footnote {
+    margin: 10px 2px 0 2px;
+    color: var(--muted);
+    font-size: 11px;
+    max-width: 720px;
+  }
   footer {
     margin-top: 14px;
     color: var(--muted);
@@ -468,11 +507,13 @@ def render_html(regular_record, regular_managers, regular_rows,
     playoff_section = render_table_section(
         playoff_record, playoff_managers, "playoffs",
         "DTF Club – Playoff Head-to-Head",
-        "Row manager's record vs. column manager in the postseason only "
-        "&middot; 2021–2025 include three years with a 3-team championship "
-        "(highest score wins, the other two each take a loss) &mdash; that format "
-        "is retired now that the league is 12 teams; 2026 onward is a normal "
-        f"bracket, pulled automatically &middot; {len(playoff_pairs)} games tracked",
+        "Row manager's record vs. column manager in the postseason, 2010 onward "
+        "(2010 &amp; 2011 are incomplete -- only the finals are fully known) "
+        "&middot; three years had a 3-team championship (highest score wins, "
+        "the other two each take a loss) &mdash; retired now that the league is "
+        f"12 teams; 2026 onward is a normal bracket, pulled automatically "
+        f"&middot; {len(playoff_pairs)} recorded games",
+        implied_wins=PLAYOFF_IMPLIED_WINS,
     )
 
     html = f"""<!doctype html>
@@ -488,7 +529,7 @@ def render_html(regular_record, regular_managers, regular_rows,
 <body>
 {regular_section}
 {playoff_section}
-  <footer>Auto-updated {generated_at} from the Sleeper API &middot; 2021–2025 playoff results are hand-entered (see README)</footer>
+  <footer>Auto-updated {generated_at} from the Sleeper API &middot; 2010–2025 playoff results are hand-entered (see README)</footer>
 </body>
 </html>
 """
