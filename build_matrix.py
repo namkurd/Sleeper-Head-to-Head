@@ -21,11 +21,12 @@ What this does, every time it runs:
      starting 2026), so a season with a full round-robin schedule but no
      playoff bracket configured (like 2024, where Sleeper reports 0) can't
      over-count.
-  4. Loads the frozen playoff baseline (playoff_baseline.tsv) -- career
-     head-to-head results from the postseason, including the years with a
-     3-team championship (highest score wins, the other two each take a loss).
-     Not auto-updated yet; add new playoff results here by hand each year
-     after the season wraps (see README).
+  4. Loads the frozen playoff baseline (playoff_baseline.tsv) -- hand-entered
+     career playoff results through the last season listed in
+     FROZEN_PLAYOFF_SEASONS, including the years with a 3-team championship
+     (highest score wins, the other two each take a loss). Every season after
+     that is pulled automatically from Sleeper's own bracket data once the
+     season is marked complete, the same way the regular season is.
   5. Recomputes both career win-loss matrices and renders index.html with
      both tables.
 
@@ -68,20 +69,26 @@ MAX_WEEKS_TO_CHECK = 18
 FROZEN_PLAYOFF_SEASONS = {"2021", "2022", "2023", "2024", "2025"}
 
 # The playoff bracket record actually goes back to 2010, but 2010 and 2011
-# are incomplete -- only the finals matchup and who reached it are known,
-# not who either finalist beat in the semifinal round. Rather than guess an
+# are incomplete: only the finals matchup and who reached it are known, not
+# who either finalist beat in the semifinal round. Rather than guess an
 # opponent, that semifinal win is credited to the finalist's career total
 # with no head-to-head opponent attached (shown with an asterisk on the
-# playoff table). Both 2010 and 2011 already have their known finals game
-# recorded as a normal row in playoff_baseline.tsv (Ryan beat Alex in 2011;
-# Jake beat Zak in 2010) -- this dict is only the *unattached* extra win for
-# each finalist from advancing out of an unknown semifinal.
+# playoff table). Both years already have their known finals game recorded
+# as a normal row in playoff_baseline.tsv (Ryan beat Alex in 2011, Jake beat
+# Zak in 2010); this is only the unattached extra win each finalist gets for
+# advancing out of a semifinal nobody recorded the opponent for. Keyed by
+# season so the page can describe which years are incomplete on its own.
 PLAYOFF_IMPLIED_WINS = {
-    "Ryan": 1,   # 2011: won an unknown semifinal to reach the final
-    "Alex": 1,   # 2011: won an unknown semifinal to reach the final
-    "Jake": 1,   # 2010: won an unknown semifinal to reach the final
-    "Zak": 1,    # 2010: won an unknown semifinal to reach the final
+    "2010": {"Jake": 1, "Zak": 1},
+    "2011": {"Ryan": 1, "Alex": 1},
 }
+
+# Seasons that ended in a 3-team championship (highest score wins, the other
+# two each take a loss) instead of a normal 1-on-1 final. Retired now that
+# the league has grown to 12 teams. Used only to describe the table in
+# natural language; the actual results are already expanded into normal
+# rows in playoff_baseline.tsv.
+PLAYOFF_THREE_TEAM_SEASONS = {"2023", "2024", "2025"}
 
 # Sleeper user_id -> real manager name, verified against actual game results
 # (not a guess). Anyone not listed here falls back to their Sleeper display
@@ -137,6 +144,17 @@ def load_baseline():
     for season, week, _w, _l in rows:
         seen_weeks[season].add(week)
     return rows, seen_weeks
+
+
+def load_playoff_baseline():
+    """Returns a list of (season:str, winner, loser). Unlike the regular
+    season baseline, there's no Week column here -- just which season each
+    playoff result happened in."""
+    rows = []
+    with open(PLAYOFF_BASELINE_PATH, newline="") as f:
+        for r in csv.DictReader(f, delimiter="\t"):
+            rows.append((r["Season"].strip(), r["Winner"].strip(), r["Loser"].strip()))
+    return rows
 
 
 def get_current_state():
@@ -301,7 +319,7 @@ def gather_new_playoff_games(chain):
             w_name = name_by_roster.get(w_id)
             l_name = name_by_roster.get(l_id)
             if w_name and l_name:
-                games.append((w_name, l_name))
+                games.append((season, w_name, l_name))
     return games
 
 
@@ -317,7 +335,18 @@ def build_matrix(pairs):
     return record, sorted(managers)
 
 
-def render_table_section(record, managers, section_id, title, subtitle, implied_wins=None):
+def natural_join(items):
+    """['2010', '2011', '2012'] -> '2010, 2011 and 2012'."""
+    items = list(items)
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def render_table_section(record, managers, section_id, title, subtitle, implied_wins=None,
+                          incomplete_seasons=None):
     implied_wins = implied_wins or {}
     managers = sorted(set(managers) | set(implied_wins))
 
@@ -366,13 +395,15 @@ def render_table_section(record, managers, section_id, title, subtitle, implied_
 
     footnote = ""
     if any_implied:
+        seasons_sorted = sorted(incomplete_seasons or [])
+        years_text = natural_join(seasons_sorted)
+        bracket_word = "bracket is" if len(seasons_sorted) == 1 else "brackets are"
         footnote = (
-            '<p class="footnote">* includes a win with no recorded opponent '
-            "-- 2010 and 2011's brackets are incomplete: only who reached the "
-            "final and the final's result are known, not who each finalist "
-            "beat in the semifinal, so that semifinal win counts toward "
-            "their career total but isn't reflected in any single matchup "
-            "cell above.</p>"
+            f'<p class="footnote">The asterisk marks a win with no recorded opponent. '
+            f"The {years_text} {bracket_word} incomplete: we only know who reached the "
+            f"final and how the final turned out, not who each finalist beat in the "
+            f"semifinal. That semifinal win still counts toward their career total, "
+            f"it just isn't reflected in any single matchup cell above.</p>"
         )
 
     return f"""
@@ -496,24 +527,56 @@ PAGE_STYLE = """
 
 
 def render_html(regular_record, regular_managers, regular_rows,
-                 playoff_record, playoff_managers, playoff_pairs, generated_at):
-    last_season = max((r[0] for r in regular_rows), default="-")
+                 playoff_record, playoff_managers, playoff_rows, generated_at):
+    reg_seasons = sorted({r[0] for r in regular_rows}, key=int)
+    reg_first, reg_last = reg_seasons[0], reg_seasons[-1]
+    reg_span = reg_first if reg_first == reg_last else f"{reg_first} through {reg_last}"
+    regular_subtitle = (
+        f"This is how every manager has fared against every other manager in the "
+        f"regular season, covering {reg_span}. It's built from {len(regular_rows)} games "
+        f"so far and updates itself automatically as new games are played."
+    )
     regular_section = render_table_section(
         regular_record, regular_managers, "regular-season",
         "DTF Club – Regular Season Head-to-Head",
-        f"Row manager's record vs. column manager, {last_season} season and earlier "
-        f"&middot; {len(regular_rows)} games tracked",
+        regular_subtitle,
+    )
+
+    playoff_seasons = sorted({r[0] for r in playoff_rows}, key=int)
+    playoff_first, playoff_last = playoff_seasons[0], playoff_seasons[-1]
+    playoff_span = playoff_first if playoff_first == playoff_last else f"{playoff_first} through {playoff_last}"
+
+    flat_implied_wins = defaultdict(int)
+    for season_wins in PLAYOFF_IMPLIED_WINS.values():
+        for manager, count in season_wins.items():
+            flat_implied_wins[manager] += count
+    incomplete_seasons = sorted(PLAYOFF_IMPLIED_WINS.keys(), key=int)
+
+    three_team_seasons = sorted(PLAYOFF_THREE_TEAM_SEASONS & set(playoff_seasons), key=int)
+    three_team_sentence = ""
+    if three_team_seasons:
+        three_team_sentence = (
+            f" In {natural_join(three_team_seasons)}, the season ended with a three "
+            f"team championship instead of a normal final: the highest score won it, "
+            f"and the other two teams both took a loss. That format is retired now "
+            f"that the league has grown to 12 teams."
+        )
+
+    frozen_last = max(FROZEN_PLAYOFF_SEASONS, key=int) if FROZEN_PLAYOFF_SEASONS else playoff_last
+    automation_start = str(int(frozen_last) + 1)
+    playoff_subtitle = (
+        f"This is how every manager has fared against every other manager in the "
+        f"postseason, covering {playoff_span}.{three_team_sentence} Starting in "
+        f"{automation_start}, the playoffs went back to a normal bracket, so those "
+        f"results are pulled in automatically the same way the regular season is. "
+        f"{len(playoff_rows)} games recorded so far."
     )
     playoff_section = render_table_section(
         playoff_record, playoff_managers, "playoffs",
         "DTF Club – Playoff Head-to-Head",
-        "Row manager's record vs. column manager in the postseason, 2010 onward "
-        "(2010 &amp; 2011 are incomplete -- only the finals are fully known) "
-        "&middot; three years had a 3-team championship (highest score wins, "
-        "the other two each take a loss) &mdash; retired now that the league is "
-        f"12 teams; 2026 onward is a normal bracket, pulled automatically "
-        f"&middot; {len(playoff_pairs)} recorded games",
-        implied_wins=PLAYOFF_IMPLIED_WINS,
+        playoff_subtitle,
+        implied_wins=flat_implied_wins,
+        incomplete_seasons=incomplete_seasons,
     )
 
     html = f"""<!doctype html>
@@ -529,7 +592,7 @@ def render_html(regular_record, regular_managers, regular_rows,
 <body>
 {regular_section}
 {playoff_section}
-  <footer>Auto-updated {generated_at} from the Sleeper API &middot; 2010–2025 playoff results are hand-entered (see README)</footer>
+  <footer>Auto-updated {generated_at} from the Sleeper API. Playoff results through {frozen_last} are entered by hand; see the README for how to update them.</footer>
 </body>
 </html>
 """
@@ -553,18 +616,19 @@ def main():
     regular_pairs = [(w, l) for _s, _wk, w, l in all_regular_rows]
     regular_record, regular_managers = build_matrix(regular_pairs)
 
-    playoff_pairs = load_tsv_results(PLAYOFF_BASELINE_PATH, season_aware=False)
-    new_playoff_pairs = gather_new_playoff_games(chain) if chain else []
-    playoff_pairs = playoff_pairs + new_playoff_pairs
+    playoff_baseline_rows = load_playoff_baseline()
+    new_playoff_rows = gather_new_playoff_games(chain) if chain else []
+    all_playoff_rows = playoff_baseline_rows + new_playoff_rows
+    playoff_pairs = [(w, l) for _s, w, l in all_playoff_rows]
     playoff_record, playoff_managers = build_matrix(playoff_pairs)
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     render_html(regular_record, regular_managers, all_regular_rows,
-                playoff_record, playoff_managers, playoff_pairs, generated_at)
+                playoff_record, playoff_managers, all_playoff_rows, generated_at)
     print(f"Wrote {OUTPUT_HTML}: regular season {len(all_regular_rows)} games "
           f"({len(new_rows)} newly pulled) across {len(regular_managers)} managers; "
-          f"playoffs {len(playoff_pairs)} games "
-          f"({len(new_playoff_pairs)} newly pulled) across {len(playoff_managers)} managers.")
+          f"playoffs {len(all_playoff_rows)} games "
+          f"({len(new_playoff_rows)} newly pulled) across {len(playoff_managers)} managers.")
 
 
 if __name__ == "__main__":
