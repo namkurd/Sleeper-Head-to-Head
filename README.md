@@ -31,7 +31,9 @@ GitHub Pages so it can be embedded live in the league's Google Site.
   1. Auto-discovers the current season's Sleeper league (no league ID to
      update, ever; it looks up Ben's leagues for the current NFL season).
   2. Walks the league chain back through `previous_league_id` to confirm the
-     season history.
+     season history, and reads the league's current name straight off
+     Sleeper for the page title and headings, so renaming the league on
+     Sleeper is all it takes to rename this page too.
   3. Pulls any new completed regular-season weeks from Sleeper that aren't
      already in the baseline, using the same "everyone plays a normal game"
      rule the historical data follows (a week only counts once every team

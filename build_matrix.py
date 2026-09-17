@@ -7,9 +7,10 @@ What this does, every time it runs:
      as compiled by the league -- this file is never rewritten automatically,
      so past seasons' numbers never silently change.
   2. Auto-discovers this season's Sleeper league (no league ID to maintain --
-     it looks up the anchor manager's leagues for the current NFL season and
-     picks the one named "DTF Club"), then walks previous_league_id backward
-     to confirm the season chain.
+     it looks up the anchor manager's leagues for the current NFL season) and
+     walks previous_league_id backward to confirm the season chain. The page
+     title and headings use the league's actual current name on Sleeper, so
+     renaming the league on Sleeper is all it takes to rename this page too.
   3. For any season/week NOT already in the baseline (this season's games
      after the baseline's last recorded week, and any future season), it
      pulls real matchup results from Sleeper's public API and appends them,
@@ -36,6 +37,7 @@ scratch, so it's self-healing.
 """
 
 import csv
+import html
 import json
 import sys
 import urllib.request
@@ -53,11 +55,15 @@ OUTPUT_HTML = HERE / "index.html"
 # The manager whose account we use to auto-discover each new season's league.
 # ("namkurd" = Ben; reused every year since he's always in the league.)
 ANCHOR_USER_ID = "611688251123699712"
+# Only used to pick the right league if the anchor manager is ever in more
+# than one league in the same season; it does NOT drive what's shown on the
+# page (see league_display_name(), which reads the live name off Sleeper).
 LEAGUE_NAME_HINT = "dtf club"
 
 # If auto-discovery ever fails (renamed league, API hiccup, etc.) fall back to
-# the newest league ID known at the time this script was written.
+# the newest league ID and name known at the time this script was written.
 FALLBACK_LEAGUE_ID = "1389416556617801728"  # 2026 season
+FALLBACK_LEAGUE_NAME = "DTF Club"
 
 MAX_WEEKS_TO_CHECK = 18
 
@@ -195,6 +201,17 @@ def get_league_chain(current_league_id):
         league_id = league.get("previous_league_id")
     chain.reverse()
     return chain
+
+
+def league_display_name(chain):
+    """The league's actual current name on Sleeper (chain is oldest-first,
+    so the newest season is last), so a rename shows up here on its own
+    without editing this script."""
+    if chain:
+        name = (chain[-1].get("name") or "").strip()
+        if name:
+            return name
+    return FALLBACK_LEAGUE_NAME
 
 
 _roster_name_cache = {}
@@ -526,8 +543,9 @@ PAGE_STYLE = """
 """
 
 
-def render_html(regular_record, regular_managers, regular_rows,
+def render_html(league_name, regular_record, regular_managers, regular_rows,
                  playoff_record, playoff_managers, playoff_rows, generated_at):
+    league_name = html.escape(league_name)
     reg_seasons = sorted({r[0] for r in regular_rows}, key=int)
     reg_first, reg_last = reg_seasons[0], reg_seasons[-1]
     reg_span = reg_first if reg_first == reg_last else f"{reg_first} through {reg_last}"
@@ -538,7 +556,7 @@ def render_html(regular_record, regular_managers, regular_rows,
     )
     regular_section = render_table_section(
         regular_record, regular_managers, "regular-season",
-        "DTF Club – Regular Season Head-to-Head",
+        f"{league_name} – Regular Season Head-to-Head",
         regular_subtitle,
     )
 
@@ -573,18 +591,18 @@ def render_html(regular_record, regular_managers, regular_rows,
     )
     playoff_section = render_table_section(
         playoff_record, playoff_managers, "playoffs",
-        "DTF Club – Playoff Head-to-Head",
+        f"{league_name} – Playoff Head-to-Head",
         playoff_subtitle,
         implied_wins=flat_implied_wins,
         incomplete_seasons=incomplete_seasons,
     )
 
-    html = f"""<!doctype html>
+    page_html = f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DTF Club &ndash; Head-to-Head Records</title>
+<title>{league_name} &ndash; Head-to-Head Records</title>
 <style>
 {PAGE_STYLE}
 </style>
@@ -596,7 +614,7 @@ def render_html(regular_record, regular_managers, regular_rows,
 </body>
 </html>
 """
-    OUTPUT_HTML.write_text(html)
+    OUTPUT_HTML.write_text(page_html)
 
 
 def main():
@@ -604,6 +622,7 @@ def main():
 
     current_league_id, state = discover_current_league_id()
     chain = get_league_chain(current_league_id)
+    league_name = league_display_name(chain)
 
     if chain:
         new_rows = gather_new_games(chain, state, seen_weeks)
@@ -623,9 +642,9 @@ def main():
     playoff_record, playoff_managers = build_matrix(playoff_pairs)
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    render_html(regular_record, regular_managers, all_regular_rows,
+    render_html(league_name, regular_record, regular_managers, all_regular_rows,
                 playoff_record, playoff_managers, all_playoff_rows, generated_at)
-    print(f"Wrote {OUTPUT_HTML}: regular season {len(all_regular_rows)} games "
+    print(f"Wrote {OUTPUT_HTML} for '{league_name}': regular season {len(all_regular_rows)} games "
           f"({len(new_rows)} newly pulled) across {len(regular_managers)} managers; "
           f"playoffs {len(all_playoff_rows)} games "
           f"({len(new_playoff_rows)} newly pulled) across {len(playoff_managers)} managers.")
