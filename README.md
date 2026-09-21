@@ -25,13 +25,14 @@ can be embedded live in the league's Google Site:
   - Scores are re-fetched live from Sleeper every run for every regular
     season week already in the baseline, not just new ones, purely to
     annotate the tooltip (win/loss totals always still come only from the
-    frozen baseline). If a manager's roster in some old season was later
-    taken over by a different Sleeper user after they left the league,
-    Sleeper only reports the current owner for that roster, so a handful of
-    older games can lose their score annotation (the win/loss record is
-    unaffected either way, since that still comes from the baseline). The
-    tooltip just quietly shows who won that game without a score in that
-    case, rather than risk attributing it to the wrong person.
+    frozen baseline). If a manager ever leaves the league and Sleeper stops
+    reporting an owner for their old roster at all (`owner_id` goes back to
+    null instead of being reassigned), there's no live API call left that
+    can recover who played it, so that roster needs a manual entry in
+    `ROSTER_OVERRIDES` near the top of `build_matrix.py` (keyed by that
+    season's `league_id` and `roster_id`) to keep showing scores for their
+    games. One case like this exists today, already handled: Tommy's
+    2023 roster.
 - `playoff_baseline.tsv` is the frozen **playoff** head-to-head record, with
   columns `Season`, `Winner`, `Loser`. It covers 2010 through 2025, every
   known postseason matchup from before this was tracked on Sleeper,
@@ -170,6 +171,15 @@ the `MANAGER_MAP` dictionary near the top (their `user_id` can be read from
 this, they'll simply show up under their Sleeper display name instead of a
 real name, per how this was set up. `build_rumbles.py` reuses the same
 `MANAGER_MAP`, so there's only ever one place to update.
+
+If someone who's already left shows up with `"owner_id": null` on their old
+roster when you check `.../rosters` (rather than being reassigned to
+whoever took their spot), that roster can no longer be resolved from live
+data at all, past or present. Add it to `ROSTER_OVERRIDES`, a few lines
+below `MANAGER_MAP`, as `"<that season's league_id>": {<roster_id>: "Name"}`
+so their historical games keep showing up correctly (this only affects the
+hover-tooltip scores; win/loss totals always come from the frozen baseline
+regardless).
 
 ## Running it locally (optional, for testing)
 

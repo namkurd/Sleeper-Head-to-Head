@@ -216,6 +216,19 @@ def league_display_name(chain):
 
 _roster_name_cache = {}
 
+# Manual overrides for a specific (league_id, roster_id) whose Sleeper
+# ownership record can no longer tell us who actually played it: when a
+# manager leaves the league, Sleeper sometimes just sets that roster's
+# owner_id to null rather than reassigning it, and once that happens there's
+# no live API call that can recover who it was -- the historical link is
+# just gone. Keyed by the league_id for the specific SEASON this applies to,
+# since roster_id numbering is only unique within one league/season.
+ROSTER_OVERRIDES = {
+    # 2023 season: roster 9 was Tommy's all year (matches history_baseline.tsv);
+    # Sleeper now reports it as owner_id null since he left the league.
+    "995809919691444224": {9: "Tommy"},
+}
+
 
 def roster_owner_names(league_id):
     if league_id in _roster_name_cache:
@@ -223,11 +236,17 @@ def roster_owner_names(league_id):
     rosters = fetch_json(f"/league/{league_id}/rosters") or []
     users = fetch_json(f"/league/{league_id}/users") or []
     display_by_user = {u["user_id"]: u.get("display_name") or u["user_id"] for u in users}
+    overrides = ROSTER_OVERRIDES.get(league_id, {})
     name_by_roster = {}
     for r in rosters:
         owner_id = r.get("owner_id")
         roster_id = r.get("roster_id")
-        if owner_id is None or roster_id is None:
+        if roster_id is None:
+            continue
+        if roster_id in overrides:
+            name_by_roster[roster_id] = overrides[roster_id]
+            continue
+        if owner_id is None:
             continue
         name = MANAGER_MAP.get(owner_id, display_by_user.get(owner_id, owner_id))
         name_by_roster[roster_id] = name
