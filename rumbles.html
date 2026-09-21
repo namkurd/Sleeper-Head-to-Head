@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rumbles &ndash; Live Standings</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb;
+    --page: #f9f9f7;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --border: rgba(11,11,11,0.10);
+    --accent: #2a78d6;
+    --accent-bg: rgba(42,120,214,0.10);
+    --live: #1f9d55;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface: #1a1a19;
+      --page: #0d0d0d;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --border: rgba(255,255,255,0.10);
+      --accent: #5b9fe6;
+      --accent-bg: rgba(91,159,230,0.14);
+      --live: #3fbd76;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px;
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 2px 0; }
+  .subtitle { color: var(--ink-2); font-size: 13px; margin: 0 0 14px 0; max-width: 720px; }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .toggle-group {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .toggle-group button {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--ink-2);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 7px 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .toggle-group button.active {
+    background: var(--accent-bg);
+    color: var(--accent);
+  }
+  .toggle-group button:not(:last-child) { border-right: 1px solid var(--border); }
+  .status {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+  .dot.live { background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 25%, transparent); }
+  .refresh-btn {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink-2);
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .refresh-btn:hover { color: var(--ink); }
+  .table-wrap {
+    overflow-x: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  th, td {
+    padding: 8px 10px;
+    text-align: center;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--grid);
+  }
+  th {
+    font-weight: 600;
+    color: var(--ink-2);
+    border-bottom: 2px solid var(--grid);
+  }
+  td.manager, th.manager-h { text-align: left; font-weight: 600; }
+  td.rank { font-weight: 700; color: var(--ink-2); }
+  td.rumbles { font-weight: 700; }
+  .pct { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+  .live-cell { color: var(--live); font-weight: 600; }
+  .footnote {
+    margin: 10px 2px 0 2px;
+    color: var(--muted);
+    font-size: 11px;
+    max-width: 720px;
+  }
+  footer { margin-top: 14px; color: var(--muted); font-size: 11px; }
+  .error-banner {
+    background: rgba(227,73,72,0.10);
+    border: 1px solid rgba(227,73,72,0.3);
+    color: var(--ink);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    margin-bottom: 14px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+  <h1 id="page-title">Rumbles &ndash; Live Standings</h1>
+  <p class="subtitle" id="page-subtitle">Loading&hellip;</p>
+
+  <div class="error-banner" id="error-banner"></div>
+
+  <div class="controls">
+    <div class="toggle-group" role="group" aria-label="Projection source for the live in-progress week">
+      <button id="toggle-generic" class="active">Generic Sleeper PPR</button>
+      <button id="toggle-custom">Our Custom Scoring</button>
+    </div>
+    <div class="status">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">Loading&hellip;</span>
+    </div>
+    <button class="refresh-btn" id="refresh-btn">Refresh now</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th class="manager-h">Manager</th>
+          <th>Rumbles</th>
+          <th>Rumble %</th>
+          <th>This Wk</th>
+          <th>PF</th>
+          <th>PA</th>
+          <th>H2H</th>
+          <th>Vs. Field</th>
+        </tr>
+      </thead>
+      <tbody id="standings-body">
+        <tr><td colspan="9" style="color: var(--muted); padding: 20px;">Loading standings&hellip;</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="footnote">
+    Rumbles: 9 for winning your head-to-head matchup, plus 1 more for every other team in the
+    league you outscore that week (a 12-team round robin, so up to 20 Rumbles in a single week).
+    Weeks already finished use the actual final scores. The current, in-progress week is
+    calculated live in your browser: each team's real score so far, plus a projection for
+    anyone who hasn't played yet. The toggle above controls which projection method is used for
+    that not-yet-played portion; it never changes anything for a week that's already final.
+  </p>
+
+  <footer id="page-footer">Loading&hellip;</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  const API_BASE = "https://api.sleeper.app/v1";
+  const HISTORY_URL = "rumbles_history.json";
+  const POLL_MS = 30000;
+  const RUMBLES_PER_WIN = 9;
+
+  let mode = "generic"; // "generic" | "custom"
+  let history = null;
+  let pollTimer = null;
+
+  const el = {
+    title: document.getElementById("page-title"),
+    subtitle: document.getElementById("page-subtitle"),
+    errorBanner: document.getElementById("error-banner"),
+    body: document.getElementById("standings-body"),
+    footer: document.getElementById("page-footer"),
+    statusDot: document.getElementById("status-dot"),
+    statusText: document.getElementById("status-text"),
+    toggleGeneric: document.getElementById("toggle-generic"),
+    toggleCustom: document.getElementById("toggle-custom"),
+    refreshBtn: document.getElementById("refresh-btn"),
+  };
+
+  function showError(msg) {
+    el.errorBanner.textContent = msg;
+    el.errorBanner.style.display = "block";
+  }
+  function clearError() {
+    el.errorBanner.style.display = "none";
+  }
+
+  async function fetchJson(url) {
+    const resp = await fetch(url, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`${resp.status} fetching ${url}`);
+    return resp.json();
+  }
+
+  function dotProduct(stats, scoringSettings) {
+    if (!stats) return 0;
+    let total = 0;
+    for (const key in scoringSettings) {
+      const v = stats[key];
+      if (typeof v === "number") total += v * scoringSettings[key];
+    }
+    return total;
+  }
+
+  function projectedPoints(playerId, projectionsById, scoringSettings) {
+    const entry = projectionsById[playerId];
+    if (!entry) return 0;
+    if (mode === "generic") {
+      return (entry.stats && typeof entry.stats.pts_ppr === "number") ? entry.stats.pts_ppr : 0;
+    }
+    return dotProduct(entry.stats, scoringSettings);
+  }
+
+  function hasStarted(playerId, statsById) {
+    return Object.prototype.hasOwnProperty.call(statsById, playerId);
+  }
+
+  async function loadHistory() {
+    history = await fetchJson(HISTORY_URL + "?t=" + Date.now());
+    el.title.textContent = `${history.league_name} – Rumbles Live Standings`;
+    document.title = `${history.league_name} – Rumbles Live Standings`;
+  }
+
+  async function loadLiveWeek() {
+    // Figure out the league's live state fresh (season could roll over,
+    // scoring settings could change, etc.) rather than trusting a
+    // potentially-stale build from earlier today.
+    const [state, league] = await Promise.all([
+      fetchJson(`${API_BASE}/state/nfl`),
+      fetchJson(`${API_BASE}/league/${history.league_id}`),
+    ]);
+
+    const currentWeek = state.week;
+    const scoringSettings = league.scoring_settings || {};
+    const throughWeek = history.through_week || 0;
+
+    if (!currentWeek || currentWeek <= throughWeek || league.status === "complete") {
+      // Nothing in progress right now (offseason, bye between weeks, or the
+      // build already caught up to the live week) -- just show the
+      // historical standings as-is, no live overlay.
+      return { liveByManager: {}, currentWeek: currentWeek || throughWeek, inProgress: false };
+    }
+
+    const [matchups, statsData, projData] = await Promise.all([
+      fetchJson(`${API_BASE}/league/${history.league_id}/matchups/${currentWeek}`),
+      fetchJson(`https://api.sleeper.app/stats/nfl/${history.season}/${currentWeek}?season_type=regular`),
+      fetchJson(`https://api.sleeper.app/projections/nfl/${history.season}/${currentWeek}?season_type=regular`),
+    ]);
+
+    const statsById = {};
+    for (const entry of statsData) statsById[entry.player_id] = entry;
+    const projectionsById = {};
+    for (const entry of projData) projectionsById[entry.player_id] = entry;
+
+    const rosterRows = matchups.map((m) => {
+      const manager = history.rosters[String(m.roster_id)];
+      const actual = Number(m.points) || 0;
+      let pending = 0;
+      for (const playerId of (m.starters || [])) {
+        if (!playerId || playerId === "0") continue;
+        if (hasStarted(playerId, statsById)) continue;
+        pending += projectedPoints(playerId, projectionsById, scoringSettings);
+      }
+      return {
+        roster_id: m.roster_id,
+        matchup_id: m.matchup_id,
+        manager,
+        liveTotal: actual + pending,
+      };
+    }).filter((r) => r.manager);
+
+    const byMatchup = {};
+    for (const r of rosterRows) {
+      (byMatchup[r.matchup_id] = byMatchup[r.matchup_id] || []).push(r);
+    }
+    const h2hResult = {};
+    for (const pair of Object.values(byMatchup)) {
+      if (pair.length !== 2) continue;
+      const [a, b] = pair;
+      if (a.liveTotal > b.liveTotal) { h2hResult[a.manager] = "W"; h2hResult[b.manager] = "L"; }
+      else if (b.liveTotal > a.liveTotal) { h2hResult[b.manager] = "W"; h2hResult[a.manager] = "L"; }
+      else { h2hResult[a.manager] = "T"; h2hResult[b.manager] = "T"; }
+    }
+    const paByManager = {};
+    for (const pair of Object.values(byMatchup)) {
+      if (pair.length !== 2) continue;
+      const [a, b] = pair;
+      paByManager[a.manager] = b.liveTotal;
+      paByManager[b.manager] = a.liveTotal;
+    }
+
+    const liveByManager = {};
+    for (const r of rosterRows) {
+      const beaten = rosterRows.filter((o) => o.manager !== r.manager && r.liveTotal > o.liveTotal).length;
+      const outcome = h2hResult[r.manager] || "T";
+      const rumbles = (outcome === "W" ? RUMBLES_PER_WIN : 0) + beaten;
+      liveByManager[r.manager] = {
+        points: r.liveTotal,
+        pa: paByManager[r.manager] || 0,
+        h2h: outcome,
+        field_w: beaten,
+        field_l: (rosterRows.length - 1) - beaten,
+        rumbles,
+      };
+    }
+
+    return { liveByManager, currentWeek, inProgress: true };
+  }
+
+  function combineStandings(live) {
+    const managers = Object.keys(history.teams);
+    const maxPerWeek = history.max_possible_per_week || 20;
+    const rows = managers.map((manager) => {
+      const base = history.teams[manager];
+      const l = live.liveByManager[manager];
+      const rumbles = base.rumbles + (l ? l.rumbles : 0);
+      const pf = base.pf + (l ? l.points : 0);
+      const pa = base.pa + (l ? l.pa : 0);
+      const h2h_w = base.h2h_w + (l && l.h2h === "W" ? 1 : 0);
+      const h2h_l = base.h2h_l + (l && l.h2h === "L" ? 1 : 0);
+      const field_w = base.field_w + (l ? l.field_w : 0);
+      const field_l = base.field_l + (l ? l.field_l : 0);
+      const weeksForPct = base.weeks_played + (l ? 1 : 0);
+      const rumblePct = weeksForPct ? rumbles / (maxPerWeek * weeksForPct) : 0;
+      return {
+        manager, rumbles, pf, pa, h2h_w, h2h_l, field_w, field_l,
+        rumblePct, thisWeek: l ? l.rumbles : null, isLive: !!l,
+      };
+    });
+    rows.sort((a, b) => b.rumbles - a.rumbles || b.pf - a.pf || a.manager.localeCompare(b.manager));
+    return rows;
+  }
+
+  function render(rows, live) {
+    clearError();
+    const throughWeek = history.through_week || 0;
+    if (live.inProgress) {
+      el.subtitle.textContent = `Season ${history.season}, through week ${throughWeek} of finished play, `
+        + `plus week ${live.currentWeek} live right now.`;
+      el.statusDot.classList.add("live");
+      el.statusText.textContent = `Live – week ${live.currentWeek} in progress`;
+    } else {
+      el.subtitle.textContent = `Season ${history.season}, through week ${throughWeek}. `
+        + `No week is currently in progress.`;
+      el.statusDot.classList.remove("live");
+      el.statusText.textContent = "No live week right now";
+    }
+
+    el.body.innerHTML = rows.map((r, i) => {
+      const pct = `${(r.rumblePct * 100).toFixed(1)}%`;
+      const thisWk = r.thisWeek === null ? "&ndash;" : `<span class="live-cell">${r.thisWeek}</span>`;
+      return `<tr>
+        <td class="rank">${i + 1}</td>
+        <td class="manager">${r.manager}</td>
+        <td class="rumbles">${r.rumbles}<span class="pct">${pct}</span></td>
+        <td>${pct}</td>
+        <td>${thisWk}</td>
+        <td>${r.pf.toFixed(1)}</td>
+        <td>${r.pa.toFixed(1)}</td>
+        <td>${r.h2h_w}-${r.h2h_l}</td>
+        <td>${r.field_w}-${r.field_l}</td>
+      </tr>`;
+    }).join("");
+
+    el.footer.textContent = `Standings through week ${throughWeek} built ${history.generated_at}. `
+      + (live.inProgress ? `Live week ${live.currentWeek} last refreshed ${new Date().toLocaleTimeString()}.`
+                          : "");
+  }
+
+  async function refresh() {
+    try {
+      await loadHistory();
+      const live = await loadLiveWeek();
+      const rows = combineStandings(live);
+      render(rows, live);
+    } catch (err) {
+      console.error(err);
+      showError("Couldn't reach live data just now (Sleeper's API or the standings file may be "
+        + "temporarily unavailable). Showing the last data that loaded successfully, if any.");
+      el.statusDot.classList.remove("live");
+      el.statusText.textContent = "Update failed";
+    }
+  }
+
+  function setMode(newMode) {
+    mode = newMode;
+    el.toggleGeneric.classList.toggle("active", mode === "generic");
+    el.toggleCustom.classList.toggle("active", mode === "custom");
+    refresh();
+  }
+
+  el.toggleGeneric.addEventListener("click", () => setMode("generic"));
+  el.toggleCustom.addEventListener("click", () => setMode("custom"));
+  el.refreshBtn.addEventListener("click", refresh);
+
+  refresh();
+  pollTimer = setInterval(refresh, POLL_MS);
+})();
+</script>
+</body>
+</html>

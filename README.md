@@ -1,8 +1,13 @@
-# DTF Club: Career Head-to-Head Record
+# DTF Club: Career Head-to-Head Record & Rumbles Live Standings
 
-A self-updating career head-to-head win/loss matrix for the league, pulled
-from Sleeper's public API, rendered as a static page, and hosted for free on
-GitHub Pages so it can be embedded live in the league's Google Site.
+Two self-updating pages for the league, both pulled from Sleeper's public
+API, rendered as static pages, and hosted for free on GitHub Pages so they
+can be embedded live in the league's Google Site:
+
+- `index.html`: the career head-to-head win/loss matrix (see below).
+- `rumbles.html`: the season's live Rumbles standings, including a truly
+  live, real-time view of whichever week is currently being played (see
+  "Rumbles live standings" further down).
 
 ## How it works
 
@@ -10,6 +15,23 @@ GitHub Pages so it can be embedded live in the league's Google Site.
   (2021 through 2026 week 1), exactly as compiled from the league. **This
   file is never rewritten automatically**, so it's the permanent source of
   truth for everything already played and past totals never silently change.
+  Hovering any cell in the regular-season table shows that pair's full
+  chronological matchup history, including the actual score of each game
+  where it's still available, and if one manager has won 2 or more of
+  their last games in a row, that streak is called out in green at the
+  bottom of the tooltip. This is regular-season only; the playoff table
+  doesn't have reliable week numbers for the hand-entered years, so it's
+  left without tooltips.
+  - Scores are re-fetched live from Sleeper every run for every regular
+    season week already in the baseline, not just new ones, purely to
+    annotate the tooltip (win/loss totals always still come only from the
+    frozen baseline). If a manager's roster in some old season was later
+    taken over by a different Sleeper user after they left the league,
+    Sleeper only reports the current owner for that roster, so a handful of
+    older games can lose their score annotation (the win/loss record is
+    unaffected either way, since that still comes from the baseline). The
+    tooltip just quietly shows who won that game without a score in that
+    case, rather than risk attributing it to the wrong person.
 - `playoff_baseline.tsv` is the frozen **playoff** head-to-head record, with
   columns `Season`, `Winner`, `Loser`. It covers 2010 through 2025, every
   known postseason matchup from before this was tracked on Sleeper,
@@ -69,6 +91,46 @@ cleanly, add that season to `FROZEN_PLAYOFF_SEASONS` near the top of
 No API key or login is needed anywhere. Sleeper's API is public read-only,
 and GitHub Actions' built-in token is what commits the update.
 
+## Rumbles live standings (`rumbles.html`)
+
+"Rumbles" is the league's own custom weekly scoring system, on top of normal
+head-to-head wins and losses: winning your head-to-head matchup is worth 9
+Rumbles, plus 1 more Rumble for every other team in the league you outscore
+that week (a 12-team round robin, so up to 20 Rumbles in a single week: 9 for
+the win plus 11 for having the top score). They're cumulative over the
+season. This page shows the running standings built entirely from that
+formula, live.
+
+- `build_rumbles.py` runs alongside `build_matrix.py` on the same daily
+  schedule. For every week of the **current season** that's fully finished,
+  it pulls the actual final scores from Sleeper, computes each manager's
+  Rumbles for that week, and writes the running totals (Rumbles, Rumble %,
+  points for/against, head-to-head record, and record against the field) to
+  `rumbles_history.json`. It's season-scoped on purpose. Rumbles resets
+  every year, unlike the career head-to-head matrix.
+- `rumbles.html` loads that file for everything already finished, then adds
+  the **current, in-progress week live**, computed right in your browser: it
+  polls Sleeper directly every 30 seconds (and on demand with the "Refresh
+  now" button) for live scores, so during gameday the standings update in
+  real time as players actually play, without waiting for the next daily
+  build.
+  - For any starter who hasn't played yet, it fills in a projection instead
+    of an actual score. There's a toggle for which projection to use:
+    **Generic Sleeper PPR** (Sleeper's own generic projection, the default)
+    or **Our Custom Scoring** (the same raw per-player projected stats, but
+    weighted by the league's actual scoring settings, pulled live from
+    Sleeper too, so it reflects things generic PPR doesn't, like this
+    league's first-down bonuses). The toggle never touches anything that's
+    already been played. It only decides how the not-yet-played portion of
+    the live week is estimated.
+  - If Sleeper's API is briefly unreachable from someone's browser, the page
+    just shows the last successfully loaded data and says so, rather than
+    breaking.
+- For now, keep updating the "2026 TRUE STANDINGS" Google Sheet by hand as
+  usual; this page is a live, gameday-only view alongside it. Down the road,
+  once it's been trusted for a while, it's meant to fully replace the manual
+  sheet.
+
 ## One-time setup (about 5 minutes)
 
 1. **Create a new repository on GitHub** (Settings can be Public, since
@@ -84,12 +146,16 @@ and GitHub Actions' built-in token is what commits the update.
 4. **Run the workflow once manually** so it doesn't wait until the next
    day: go to the *Actions* tab → "Update head-to-head record" → *Run
    workflow*. It'll pull live data, confirm the baseline still matches, and
-   commit `index.html`.
-5. **Grab the Pages URL**: still in *Settings → Pages*, GitHub will show
+   commit `index.html` and `rumbles_history.json`.
+5. **Grab the Pages URLs**: still in *Settings → Pages*, GitHub will show
    something like `https://<your-username>.github.io/<repo-name>/`. Open it
-   to confirm the table shows up.
-6. **Embed it in Google Sites**: edit your Site → *Insert → Embed → By URL*
-   → paste the Pages URL → Insert. Resize the embed box as needed.
+   to confirm the head-to-head table shows up, and open
+   `https://<your-username>.github.io/<repo-name>/rumbles.html` to confirm
+   the Rumbles standings show up too.
+6. **Embed both in Google Sites**: edit your Site → *Insert → Embed → By
+   URL* → paste the Pages URL → Insert. Do this once for the head-to-head
+   page and again (as a separate embed) for the `rumbles.html` URL. Resize
+   each embed box as needed.
 
 That's it, from here it updates itself. Nothing else to touch during the
 season. Each new season, once the commissioner rolls the league over on
@@ -102,12 +168,17 @@ Open `build_matrix.py` and add their Sleeper `user_id` to name mapping to
 the `MANAGER_MAP` dictionary near the top (their `user_id` can be read from
 `https://api.sleeper.app/v1/league/<current_league_id>/users`). If you skip
 this, they'll simply show up under their Sleeper display name instead of a
-real name, per how this was set up.
+real name, per how this was set up. `build_rumbles.py` reuses the same
+`MANAGER_MAP`, so there's only ever one place to update.
 
 ## Running it locally (optional, for testing)
 
 ```
 python3 build_matrix.py
+python3 build_rumbles.py
 ```
 
-No dependencies beyond Python 3's standard library.
+No dependencies beyond Python 3's standard library. `rumbles.html` itself
+has no build step; it's plain HTML/JS that runs entirely in the browser, so
+just opening it (served over http/https, not as a bare `file://` page,
+since it needs to fetch `rumbles_history.json`) is enough to test it.

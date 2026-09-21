@@ -236,10 +236,10 @@ def roster_owner_names(league_id):
 
 
 def completed_weeks_for_league(league_id, total_rosters, max_week_exclusive):
-    """Yields (week, [(winner_name, loser_name), ...]) for weeks where every
-    roster played a normal 1-vs-1 game (the 'everyone plays' rule), stopping
-    at the first week that isn't (playoffs/bye split), has no data yet, or
-    exceeds max_week_exclusive."""
+    """Yields (week, [(winner_name, loser_name, winner_pts, loser_pts), ...])
+    for weeks where every roster played a normal 1-vs-1 game (the 'everyone
+    plays' rule), stopping at the first week that isn't (playoffs/bye
+    split), has no data yet, or exceeds max_week_exclusive."""
     name_by_roster = roster_owner_names(league_id)
     if not name_by_roster:
         return
@@ -275,15 +275,30 @@ def completed_weeks_for_league(league_id, total_rosters, max_week_exclusive):
                 continue
             if a["points"] == b["points"]:
                 continue  # tie: doesn't fit a winner/loser record, skip
-            winner, loser = (a_name, b_name) if a["points"] > b["points"] else (b_name, a_name)
-            games.append((winner, loser))
+            if a["points"] > b["points"]:
+                winner, loser, winner_pts, loser_pts = a_name, b_name, a["points"], b["points"]
+            else:
+                winner, loser, winner_pts, loser_pts = b_name, a_name, b["points"], a["points"]
+            games.append((winner, loser, winner_pts, loser_pts))
         yield week, games
 
 
-def gather_new_games(chain, state, seen_weeks):
-    """For every league in the chain, add any (season, week) not already in
-    the baseline."""
+def gather_regular_season_data(chain, state, seen_weeks):
+    """Walks every league in the chain and fetches every regular-season
+    week's actual results (the same 'everyone plays' rule the baseline
+    follows). Returns:
+      - new_rows: (season, week, winner, loser) for weeks not already in
+        the baseline -- this is the authoritative source for win/loss
+        totals, unchanged from before.
+      - scores_by_game: {(season:int, week:int, frozenset({a, b})):
+        {a: points, b: points}} for every regular-season week reachable
+        live, INCLUDING ones already recorded in the frozen baseline. This
+        is purely to annotate the hover tooltips with real scores; it never
+        changes any recorded win or loss (those still only ever come from
+        the frozen baseline / these same new_rows, exactly as before).
+    """
     new_rows = []
+    scores_by_game = {}
     for league in chain:
         season = league["season"]
         league_id = league["league_id"]
@@ -304,11 +319,13 @@ def gather_new_games(chain, state, seen_weeks):
         max_week_exclusive = min(caps) if caps else None
 
         for week, games in completed_weeks_for_league(league_id, total_rosters, max_week_exclusive):
-            if week in seen_weeks.get(season, set()):
-                continue
-            for winner, loser in games:
-                new_rows.append((season, week, winner, loser))
-    return new_rows
+            for winner, loser, winner_pts, loser_pts in games:
+                scores_by_game[(int(season), week, frozenset((winner, loser)))] = {
+                    winner: winner_pts, loser: loser_pts,
+                }
+                if week not in seen_weeks.get(season, set()):
+                    new_rows.append((season, week, winner, loser))
+    return new_rows, scores_by_game
 
 
 def gather_new_playoff_games(chain):
@@ -352,6 +369,62 @@ def build_matrix(pairs):
     return record, sorted(managers)
 
 
+def build_pair_histories(rows):
+    """rows: (season, week, winner, loser) tuples. Returns a dict keyed by
+    frozenset({a, b}) -> chronologically sorted list of (season:int,
+    week:int, winner) for every game between that pair. Used to power the
+    regular-season hover tooltips; not meaningful for the playoff table
+    (no reliable week numbers / some seasons are hand-entered), so this is
+    only ever built from regular_rows."""
+    by_pair = defaultdict(list)
+    for season, week, winner, loser in rows:
+        by_pair[frozenset((winner, loser))].append((int(season), int(week), winner))
+    for games in by_pair.values():
+        games.sort(key=lambda g: (g[0], g[1]))
+    return by_pair
+
+
+def current_streak(games):
+    """games: chronologically sorted list of (season, week, winner) for one
+    pair. Returns (manager, count) for the trailing same-winner streak if
+    it's 2 or more games, else None."""
+    if len(games) < 2:
+        return None
+    last_winner = games[-1][2]
+    count = 0
+    for _season, _week, winner in reversed(games):
+        if winner != last_winner:
+            break
+        count += 1
+    return (last_winner, count) if count >= 2 else None
+
+
+def render_tooltip_html(a, b, games, scores_by_game=None):
+    """Chronological matchup history between a and b, oldest first, with a
+    green trailing-streak line at the bottom when one manager has won 2 or
+    more of the most recent games in a row. When scores_by_game has an
+    entry for a given game (only reachable while the league that played it
+    is still live on Sleeper), the actual score is shown alongside it;
+    otherwise that line just shows who won, as before."""
+    if not games:
+        return None
+    row_parts = []
+    for season, week, winner in games:
+        loser = b if winner == a else a
+        score_txt = ""
+        scores = (scores_by_game or {}).get((season, week, frozenset((a, b))))
+        if scores and winner in scores and loser in scores:
+            score_txt = f' ({scores[winner]:.1f}&ndash;{scores[loser]:.1f})'
+        row_parts.append(f'<div class="tip-row">{season} Wk{week} &mdash; {html.escape(winner)}{score_txt}</div>')
+    rows_html = "".join(row_parts)
+    streak_html = ""
+    streak = current_streak(games)
+    if streak:
+        manager, count = streak
+        streak_html = f'<div class="tip-streak">{html.escape(manager)} has won {count} straight</div>'
+    return f'<div class="tip-head">{html.escape(a)} vs. {html.escape(b)}</div>{rows_html}{streak_html}'
+
+
 def natural_join(items):
     """['2010', '2011', '2012'] -> '2010, 2011 and 2012'."""
     items = list(items)
@@ -363,7 +436,7 @@ def natural_join(items):
 
 
 def render_table_section(record, managers, section_id, title, subtitle, implied_wins=None,
-                          incomplete_seasons=None):
+                          incomplete_seasons=None, pair_histories=None, scores_by_game=None):
     implied_wins = implied_wins or {}
     managers = sorted(set(managers) | set(implied_wins))
 
@@ -386,7 +459,15 @@ def render_table_section(record, managers, section_id, title, subtitle, implied_
             bg = f"rgba(227,73,72,{0.10 + 0.28 * intensity:.3f})"
         else:
             bg = "rgba(137,135,129,0.12)"
-        return f'<td style="background:{bg}"><span class="rec">{w}-{l}</span></td>'
+
+        attrs = [f'style="background:{bg}"']
+        if pair_histories is not None:
+            games = pair_histories.get(frozenset((a, b)))
+            tip_html = render_tooltip_html(a, b, games, scores_by_game) if games else None
+            if tip_html:
+                attrs.append('class="tip-anchor"')
+                attrs.append(f'data-tip="{html.escape(tip_html, quote=True)}"')
+        return f'<td {" ".join(attrs)}><span class="rec">{w}-{l}</span></td>'
 
     def total_record(m):
         w = sum(v[0] for v in record.get(m, {}).values()) + implied_wins.get(m, 0)
@@ -450,6 +531,7 @@ PAGE_STYLE = """
     --muted: #898781;
     --grid: #e1e0d9;
     --border: rgba(11,11,11,0.10);
+    --pos: #1f9d55;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -461,6 +543,7 @@ PAGE_STYLE = """
       --muted: #898781;
       --grid: #2c2c2a;
       --border: rgba(255,255,255,0.10);
+      --pos: #3fbd76;
     }
   }
   * { box-sizing: border-box; }
@@ -540,11 +623,75 @@ PAGE_STYLE = """
     color: var(--muted);
     font-size: 11px;
   }
+  .tip-anchor { cursor: help; }
+  #cell-tooltip {
+    position: fixed;
+    display: none;
+    z-index: 50;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    max-width: 240px;
+    pointer-events: none;
+  }
+  #cell-tooltip .tip-head {
+    font-weight: 700;
+    margin-bottom: 6px;
+    white-space: nowrap;
+  }
+  #cell-tooltip .tip-row {
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  #cell-tooltip .tip-streak {
+    margin-top: 6px;
+    font-weight: 700;
+    color: var(--pos);
+    white-space: nowrap;
+  }
+"""
+
+TOOLTIP_SCRIPT = """
+<div id="cell-tooltip"></div>
+<script>
+(function () {
+  var tip = document.getElementById("cell-tooltip");
+  function position(e) {
+    var pad = 14;
+    var x = e.clientX + pad;
+    var y = e.clientY + pad;
+    var rect = tip.getBoundingClientRect();
+    if (x + rect.width > window.innerWidth - 8) x = e.clientX - rect.width - pad;
+    if (y + rect.height > window.innerHeight - 8) y = e.clientY - rect.height - pad;
+    tip.style.left = x + "px";
+    tip.style.top = y + "px";
+  }
+  document.addEventListener("mouseover", function (e) {
+    var td = e.target.closest(".tip-anchor");
+    if (!td) return;
+    tip.innerHTML = td.getAttribute("data-tip");
+    tip.style.display = "block";
+    position(e);
+  });
+  document.addEventListener("mousemove", function (e) {
+    if (tip.style.display === "block" && e.target.closest(".tip-anchor")) position(e);
+  });
+  document.addEventListener("mouseout", function (e) {
+    var td = e.target.closest(".tip-anchor");
+    if (td && !td.contains(e.relatedTarget)) tip.style.display = "none";
+  });
+})();
+</script>
 """
 
 
 def render_html(league_name, regular_record, regular_managers, regular_rows,
-                 playoff_record, playoff_managers, playoff_rows, generated_at):
+                 playoff_record, playoff_managers, playoff_rows, generated_at,
+                 scores_by_game=None):
     league_name = html.escape(league_name)
     reg_seasons = sorted({r[0] for r in regular_rows}, key=int)
     reg_first, reg_last = reg_seasons[0], reg_seasons[-1]
@@ -554,10 +701,17 @@ def render_html(league_name, regular_record, regular_managers, regular_rows,
         f"regular season, covering {reg_span}. It's built from {len(regular_rows)} games "
         f"so far and updates itself automatically as new games are played."
     )
+    # Hover tooltips (chronological matchup history + current streak) are a
+    # regular-season-only feature: the playoff table has no reliable week
+    # numbers for the hand-entered years, so it's deliberately left alone
+    # (pair_histories is only ever passed to this one call).
+    pair_histories = build_pair_histories(regular_rows)
     regular_section = render_table_section(
         regular_record, regular_managers, "regular-season",
         f"{league_name} – Regular Season Head-to-Head",
         regular_subtitle,
+        pair_histories=pair_histories,
+        scores_by_game=scores_by_game,
     )
 
     playoff_seasons = sorted({r[0] for r in playoff_rows}, key=int)
@@ -610,7 +764,8 @@ def render_html(league_name, regular_record, regular_managers, regular_rows,
 <body>
 {regular_section}
 {playoff_section}
-  <footer>Auto-updated {generated_at} from the Sleeper API. Playoff results through {frozen_last} are entered by hand; see the README for how to update them.</footer>
+  <footer>Auto-updated {generated_at} from the Sleeper API. Playoff results through {frozen_last} are entered by hand; see the README for how to update them. Hover any regular-season cell for that pair's matchup history.</footer>
+{TOOLTIP_SCRIPT}
 </body>
 </html>
 """
@@ -625,11 +780,11 @@ def main():
     league_name = league_display_name(chain)
 
     if chain:
-        new_rows = gather_new_games(chain, state, seen_weeks)
+        new_rows, scores_by_game = gather_regular_season_data(chain, state, seen_weeks)
     else:
         print("WARN: could not build league chain (offline/blocked?); "
               "rendering regular season from baseline only.", file=sys.stderr)
-        new_rows = []
+        new_rows, scores_by_game = [], {}
 
     all_regular_rows = baseline_rows + new_rows
     regular_pairs = [(w, l) for _s, _wk, w, l in all_regular_rows]
@@ -643,10 +798,11 @@ def main():
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     render_html(league_name, regular_record, regular_managers, all_regular_rows,
-                playoff_record, playoff_managers, all_playoff_rows, generated_at)
+                playoff_record, playoff_managers, all_playoff_rows, generated_at,
+                scores_by_game=scores_by_game)
     print(f"Wrote {OUTPUT_HTML} for '{league_name}': regular season {len(all_regular_rows)} games "
-          f"({len(new_rows)} newly pulled) across {len(regular_managers)} managers; "
-          f"playoffs {len(all_playoff_rows)} games "
+          f"({len(new_rows)} newly pulled, {len(scores_by_game)} with a real score) across "
+          f"{len(regular_managers)} managers; playoffs {len(all_playoff_rows)} games "
           f"({len(new_playoff_rows)} newly pulled) across {len(playoff_managers)} managers.")
 
 
