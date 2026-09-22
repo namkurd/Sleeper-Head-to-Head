@@ -48,8 +48,9 @@ can be embedded live in the league's Google Site:
     credited to the finalist's career total with no opponent attached
     (`PLAYOFF_IMPLIED_WINS` near the top of `build_matrix.py`) and shown
     with an asterisk on the playoff table instead of being guessed at.
-- `build_matrix.py` runs on a schedule (once a day at 9:00 UTC, via GitHub
-  Actions; see `.github/workflows/update.yml` to change the time).
+- `build_matrix.py` runs on a schedule (weekly, Tuesday 5:30am Eastern, via
+  GitHub Actions; see `.github/workflows/update.yml` to change the day or
+  time, including the DST note in there since cron itself only speaks UTC).
   Each run:
   1. Auto-discovers the current season's Sleeper league (no league ID to
      update, ever; it looks up Ben's leagues for the current NFL season).
@@ -102,7 +103,7 @@ the win plus 11 for having the top score). They're cumulative over the
 season. This page shows the running standings built entirely from that
 formula, live.
 
-- `build_rumbles.py` runs alongside `build_matrix.py` on the same daily
+- `build_rumbles.py` runs alongside `build_matrix.py` on the same weekly
   schedule. For every week of the **current season** that's fully finished,
   it pulls the actual final scores from Sleeper, computes each manager's
   Rumbles for that week, and writes the running totals (Rumbles, Rumble %,
@@ -113,7 +114,7 @@ formula, live.
   the **current, in-progress week live**, computed right in your browser: it
   polls Sleeper directly every 30 seconds (and on demand with the "Refresh
   now" button) for live scores, so during gameday the standings update in
-  real time as players actually play, without waiting for the next daily
+  real time as players actually play, without waiting for the next weekly
   build.
   - For any starter who hasn't played yet, it fills in a projection instead
     of an actual score. There's a toggle for which projection to use:
