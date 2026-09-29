@@ -1,47 +1,48 @@
-Season	Winner	Loser
-2010	Jake	Zak
-2011	Ryan	Alex
-2012	Steven	Ryan
-2012	Ankit	Haan
-2012	Ankit	Steven
-2013	Oleg	Alex
-2013	Oleg	Steven
-2013	Steven	Joe
-2014	Ben	Alex
-2014	Ryan	Steven
-2014	Ryan	Ben
-2015	Eli	Jake
-2015	Tommy	Haan
-2015	Tommy	Eli
-2016	Ben	Ryan
-2016	Jake	Joe
-2016	Jake	Ben
-2017	Ryan	Ben
-2017	Tommy	Steven
-2017	Tommy	Ryan
-2018	Joe	Tommy
-2018	Ben	Oleg
-2018	Ben	Joe
-2019	Ryan	Haan
-2019	Jake	Aidan
-2019	Ryan	Jake
-2020	Haan	Steven
-2020	Ryan	Ben
-2020	Haan	Ryan
-2021	Ryan	Aidan
-2021	Ben	Ankit
-2021	Ben	Ryan
-2022	Ben	Haan
-2022	Aidan	Alex
-2022	Ben	Aidan
-2023	Joe	Ryan
-2023	Ankit	Jake
-2023	Ankit	Joe
-2023	Ankit	Steven
-2024	Aidan	Haan
-2024	Alex	Joe
-2024	Alex	Ben
-2025	Aidan	Ankit
-2025	Haan	Joe
-2025	Haan	Steven
-2025	Haan	Aidan
+Season	Week	Winner	Loser	WinnerScore	LoserScore
+2010		Jake	Zak		
+2011		Ryan	Alex		
+2012	15	Steven	Ryan		
+2012	15	Ankit	Haan		
+2012	16	Ankit	Steven		
+2013	15	Oleg	Alex	108.8	84.2
+2013	15	Steven	Joe	138.3	117
+2013	16	Oleg	Steven	133.4	92.8
+2014	15	Ben	Alex	142.2	113.2
+2014	15	Ryan	Steven	91.3	91.2
+2014	16	Ryan	Ben	107.5	86.5
+2015	15	Eli	Jake	88	72.9
+2015	15	Tommy	Haan	130.7	128
+2015	16	Tommy	Eli	87.7	77.5
+2016	15	Ben	Ryan	92.4	59.4
+2016	15	Jake	Joe	113.9	112.8
+2016	16	Jake	Ben	106.1	84.8
+2017	15	Ryan	Ben	110.1	73.5
+2017	15	Tommy	Steven	164.5	126
+2017	16	Tommy	Ryan	114.9	85.9
+2018	15	Joe	Tommy	120.5	87.3
+2018	15	Ben	Oleg	96.7	94.5
+2018	16	Ben	Joe	133.8	93.6
+2019	15	Ryan	Haan	105.7	66.7
+2019	15	Jake	Aidan	107.3	100
+2019	16	Ryan	Jake	115.7	102
+2020	15	Haan	Steven	126.2	114.7
+2020	15	Ryan	Ben	153.1	123
+2020	16	Haan	Ryan	125.5	107.1
+2021	16	Ryan	Aidan	134.1	96.7
+2021	16	Ben	Ankit	130.4	110.2
+2021	17	Ben	Ryan	139	123.8
+2022	16	Ben	Haan	125.9	84
+2022	16	Aidan	Alex	155.1	93.6
+2022	17	Ben	Aidan	97.4	87
+2023	16	Joe	Ryan	156	123
+2023	16	Ankit	Jake	163	129
+2023	17	Ankit	Joe	158	152
+2023	17	Ankit	Steven	158	146
+2024	16	Aidan	Rohaan	153	146
+2024	16	Alex	Joe	173	135
+2024	17	Alex	Aidan	186	166
+2024	17	Alex	Ben	186	154
+2025	16	Aidan	Ankit	149	136
+2025	16	Rohaan	Joe	156	154
+2025	17	Rohaan	Steven	202	177
+2025	17	Rohaan	Aidan	202	120
