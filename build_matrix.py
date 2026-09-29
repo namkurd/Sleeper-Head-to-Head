@@ -77,15 +77,16 @@ MAX_WEEKS_TO_CHECK = 18
 FROZEN_PLAYOFF_SEASONS = {"2021", "2022", "2023", "2024", "2025"}
 
 # The playoff bracket record actually goes back to 2010, but 2010 and 2011
-# are incomplete: only the finals matchup and who reached it are known, not
-# who either finalist beat in the semifinal round. Rather than guess an
-# opponent, that semifinal win is credited to the finalist's career total
-# with no head-to-head opponent attached (shown with an asterisk on the
-# playoff table). Both years already have their known finals game recorded
-# as a normal row in playoff_baseline.tsv (Ryan beat Alex in 2011, Jake beat
-# Zak in 2010); this is only the unattached extra win each finalist gets for
-# advancing out of a semifinal nobody recorded the opponent for. Keyed by
-# season so the page can describe which years are incomplete on its own.
+# are incomplete: the week-15 semifinal round is known to have happened and
+# who won it, but not who either finalist actually beat there. Rather than
+# guess an opponent, that semifinal win is credited to the finalist's career
+# total with no head-to-head opponent attached (shown with an asterisk on
+# the playoff table). Both years' week-16 finals ARE fully known and recorded
+# as a normal row in playoff_baseline.tsv (2010: Jake over Zak; 2011: Ryan
+# over Alex) -- just with no score, same as 2012's games -- so this dict is
+# only the unattached extra win each finalist gets for advancing out of a
+# semifinal nobody recorded the opponent for. Keyed by season so the page can
+# describe which years are incomplete on its own.
 PLAYOFF_IMPLIED_WINS = {
     "2010": {"Jake": 1, "Zak": 1},
     "2011": {"Ryan": 1, "Alex": 1},
@@ -156,14 +157,19 @@ def load_baseline():
 
 def load_playoff_baseline():
     """Returns (rows, scores_by_game).
-    rows: list of (season:str, week:int|None, winner, loser). Week (and
-    score) is None only for the two incomplete pre-Sleeper finals (2010,
-    2011), where nothing beyond who won the final survives -- those still
-    count toward career totals but don't get a hover tooltip. Every season
-    2012 onward has a real week and, from 2013 on, a real score for each
-    game (a 3-team championship final is stored as two rows -- winner over
-    each of the other two -- so it plugs into the same pair-based tooltip
-    machinery as everything else).
+    rows: list of (season:str, week:int|None, winner, loser). Every game in
+    the baseline, all the way back to 2010, has a known week, so every one
+    of them gets a hover tooltip; only the score is missing for 2010-2012
+    (those tooltip rows just show who won, exactly like a normal game with
+    no score attached). week:int|None is kept for defensiveness -- nothing
+    in the current baseline actually has a blank week -- since the two
+    semifinal wins with a genuinely unknown opponent (one Jake/Zak win each
+    in 2010, one Ryan/Alex win each in 2011) aren't rows in this file at all;
+    they're credited to career totals via PLAYOFF_IMPLIED_WINS instead,
+    since there's no opponent to pair them with for a tooltip. From 2013 on
+    every game also has a real score (a 3-team championship final is stored
+    as two rows -- winner over each of the other two -- so it plugs into the
+    same pair-based tooltip machinery as everything else).
     scores_by_game: {(season:int, week:int, frozenset({a,b})): {a: pts, b: pts}}
     for every hand-entered game with a recorded score."""
     rows = []
