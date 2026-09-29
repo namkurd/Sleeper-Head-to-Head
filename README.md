@@ -42,16 +42,15 @@ can be embedded live in the league's Google Site:
   are pulled automatically** from Sleeper's own bracket data, the same as
   the regular season -- week and score included, so the tooltip keeps
   working without any hand-entry once that kicks in.
-  - 2010 and 2011 are incomplete: only the finals matchup is fully known
-    (Jake over Zak in 2010, Ryan over Alex in 2011), and no week or score
-    survives for either, so those two cells don't get a tooltip. Whoever
-    each finalist beat in the semifinal to get there isn't recorded either,
-    so that extra win is credited to the finalist's career total with no
-    opponent attached (`PLAYOFF_IMPLIED_WINS` near the top of
-    `build_matrix.py`) and shown with an asterisk on the playoff table
-    instead of being guessed at. 2012's three games are known but scoreless
-    (no score was recorded for that year), so their tooltip rows show only
-    who won.
+  - 2010 and 2011 are incomplete: the week-16 final is fully known (Jake
+    over Zak in 2010, Ryan over Alex in 2011), just with no score recorded,
+    so those two cells get a tooltip that shows only who won -- same as
+    2012's three games, which are known but scoreless too (no score was
+    recorded that year). Whoever each finalist beat in the week-15
+    semifinal to get there isn't recorded at all, so that extra win is
+    credited to the finalist's career total with no opponent attached
+    (`PLAYOFF_IMPLIED_WINS` near the top of `build_matrix.py`) and shown
+    with an asterisk on the playoff table instead of being guessed at.
 - `build_matrix.py` runs on a schedule (weekly, Tuesday 5:30am Eastern, via
   GitHub Actions; see `.github/workflows/update.yml` to change the day or
   time, including the DST note in there since cron itself only speaks UTC).
