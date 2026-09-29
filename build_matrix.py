@@ -23,11 +23,13 @@ What this does, every time it runs:
      playoff bracket configured (like 2024, where Sleeper reports 0) can't
      over-count.
   4. Loads the frozen playoff baseline (playoff_baseline.tsv) -- hand-entered
-     career playoff results through the last season listed in
-     FROZEN_PLAYOFF_SEASONS, including the years with a 3-team championship
-     (highest score wins, the other two each take a loss). Every season after
-     that is pulled automatically from Sleeper's own bracket data once the
-     season is marked complete, the same way the regular season is.
+     career playoff results, with a week and (from 2013 on) a real score for
+     each game, through the last season listed in FROZEN_PLAYOFF_SEASONS,
+     including the years with a 3-team championship (highest score wins, the
+     other two each take a loss -- stored as two rows, winner over each of
+     the other two). Every season after that is pulled automatically from
+     Sleeper's own bracket data once the season is marked complete, the same
+     way the regular season is, week and score included.
   5. Recomputes both career win-loss matrices and renders index.html with
      both tables.
 
@@ -153,14 +155,34 @@ def load_baseline():
 
 
 def load_playoff_baseline():
-    """Returns a list of (season:str, winner, loser). Unlike the regular
-    season baseline, there's no Week column here -- just which season each
-    playoff result happened in."""
+    """Returns (rows, scores_by_game).
+    rows: list of (season:str, week:int|None, winner, loser). Week (and
+    score) is None only for the two incomplete pre-Sleeper finals (2010,
+    2011), where nothing beyond who won the final survives -- those still
+    count toward career totals but don't get a hover tooltip. Every season
+    2012 onward has a real week and, from 2013 on, a real score for each
+    game (a 3-team championship final is stored as two rows -- winner over
+    each of the other two -- so it plugs into the same pair-based tooltip
+    machinery as everything else).
+    scores_by_game: {(season:int, week:int, frozenset({a,b})): {a: pts, b: pts}}
+    for every hand-entered game with a recorded score."""
     rows = []
+    scores_by_game = {}
     with open(PLAYOFF_BASELINE_PATH, newline="") as f:
         for r in csv.DictReader(f, delimiter="\t"):
-            rows.append((r["Season"].strip(), r["Winner"].strip(), r["Loser"].strip()))
-    return rows
+            season = r["Season"].strip()
+            winner = r["Winner"].strip()
+            loser = r["Loser"].strip()
+            week_txt = (r.get("Week") or "").strip()
+            week = int(week_txt) if week_txt else None
+            rows.append((season, week, winner, loser))
+            w_txt = (r.get("WinnerScore") or "").strip()
+            l_txt = (r.get("LoserScore") or "").strip()
+            if week is not None and w_txt and l_txt:
+                scores_by_game[(int(season), week, frozenset((winner, loser)))] = {
+                    winner: float(w_txt), loser: float(l_txt),
+                }
+    return rows, scores_by_game
 
 
 def get_current_state():
@@ -352,8 +374,21 @@ def gather_new_playoff_games(chain):
     straight from Sleeper's own bracket data (a normal winners bracket -- no
     3-team-final handling needed, since that format is retired). Only pulled
     once Sleeper marks the season 'complete', so an in-progress playoff round
-    is never counted as final."""
+    is never counted as final.
+
+    Returns (games, scores_by_game):
+      - games: (season, week, winner, loser) tuples, same shape as the
+        playoff baseline rows, so both feed the matrix and the hover
+        tooltips the same way. week is derived from the league's
+        playoff_week_start plus the bracket round; it's left as None (no
+        tooltip for that game, but it still counts) only if Sleeper doesn't
+        report playoff_week_start at all.
+      - scores_by_game: same shape as the regular-season one, filled in by
+        fetching that week's matchups once per week and reading each
+        roster's points straight off it.
+    """
     games = []
+    scores_by_game = {}
     for league in chain:
         season = league["season"]
         if season in FROZEN_PLAYOFF_SEASONS:
@@ -365,15 +400,34 @@ def gather_new_playoff_games(chain):
         if not bracket:
             continue
         name_by_roster = roster_owner_names(league_id)
+        pws = (league.get("settings") or {}).get("playoff_week_start")
+        pws = int(pws) if pws else None
+        points_by_week = {}
         for m in bracket:
             w_id, l_id = m.get("w"), m.get("l")
             if w_id is None or l_id is None:
                 continue  # this round wasn't actually decided (e.g. a bye slot)
             w_name = name_by_roster.get(w_id)
             l_name = name_by_roster.get(l_id)
-            if w_name and l_name:
-                games.append((season, w_name, l_name))
-    return games
+            if not (w_name and l_name):
+                continue
+            round_num = m.get("r")
+            week = (pws + round_num - 1) if (pws and round_num) else None
+            games.append((season, week, w_name, l_name))
+            if week is None:
+                continue
+            if week not in points_by_week:
+                week_data = fetch_json(f"/league/{league_id}/matchups/{week}") or []
+                points_by_week[week] = {
+                    e.get("roster_id"): e.get("points") for e in week_data
+                }
+            w_pts = points_by_week[week].get(w_id)
+            l_pts = points_by_week[week].get(l_id)
+            if w_pts is not None and l_pts is not None:
+                scores_by_game[(int(season), week, frozenset((w_name, l_name)))] = {
+                    w_name: float(w_pts), l_name: float(l_pts),
+                }
+    return games, scores_by_game
 
 
 def build_matrix(pairs):
@@ -389,14 +443,17 @@ def build_matrix(pairs):
 
 
 def build_pair_histories(rows):
-    """rows: (season, week, winner, loser) tuples. Returns a dict keyed by
-    frozenset({a, b}) -> chronologically sorted list of (season:int,
-    week:int, winner) for every game between that pair. Used to power the
-    regular-season hover tooltips; not meaningful for the playoff table
-    (no reliable week numbers / some seasons are hand-entered), so this is
-    only ever built from regular_rows."""
+    """rows: (season, week, winner, loser) tuples (week may be None for a
+    handful of playoff games with no recorded week -- those are simply left
+    out of the tooltip history, though they still count toward totals).
+    Returns a dict keyed by frozenset({a, b}) -> chronologically sorted list
+    of (season:int, week:int, winner) for every game between that pair.
+    Powers the hover tooltip on both the regular-season and playoff
+    tables."""
     by_pair = defaultdict(list)
     for season, week, winner, loser in rows:
+        if week is None:
+            continue
         by_pair[frozenset((winner, loser))].append((int(season), int(week), winner))
     for games in by_pair.values():
         games.sort(key=lambda g: (g[0], g[1]))
@@ -710,7 +767,7 @@ TOOLTIP_SCRIPT = """
 
 def render_html(league_name, regular_record, regular_managers, regular_rows,
                  playoff_record, playoff_managers, playoff_rows, generated_at,
-                 scores_by_game=None):
+                 scores_by_game=None, playoff_scores_by_game=None):
     league_name = html.escape(league_name)
     reg_seasons = sorted({r[0] for r in regular_rows}, key=int)
     reg_first, reg_last = reg_seasons[0], reg_seasons[-1]
@@ -720,10 +777,10 @@ def render_html(league_name, regular_record, regular_managers, regular_rows,
         f"regular season, covering {reg_span}. It's built from {len(regular_rows)} games "
         f"so far and updates itself automatically as new games are played."
     )
-    # Hover tooltips (chronological matchup history + current streak) are a
-    # regular-season-only feature: the playoff table has no reliable week
-    # numbers for the hand-entered years, so it's deliberately left alone
-    # (pair_histories is only ever passed to this one call).
+    # Hover tooltips show that pair's chronological matchup history (with a
+    # score wherever one is on record) plus a current-streak callout. Built
+    # the same way for both tables now; a playoff game with no recorded week
+    # (2010/2011) is simply skipped by build_pair_histories, not shown.
     pair_histories = build_pair_histories(regular_rows)
     regular_section = render_table_section(
         regular_record, regular_managers, "regular-season",
@@ -762,12 +819,15 @@ def render_html(league_name, regular_record, regular_managers, regular_rows,
         f"results are pulled in automatically the same way the regular season is. "
         f"{len(playoff_rows)} games recorded so far."
     )
+    playoff_pair_histories = build_pair_histories(playoff_rows)
     playoff_section = render_table_section(
         playoff_record, playoff_managers, "playoffs",
         f"{league_name} – Playoff Head-to-Head",
         playoff_subtitle,
         implied_wins=flat_implied_wins,
         incomplete_seasons=incomplete_seasons,
+        pair_histories=playoff_pair_histories,
+        scores_by_game=playoff_scores_by_game,
     )
 
     page_html = f"""<!doctype html>
@@ -783,7 +843,7 @@ def render_html(league_name, regular_record, regular_managers, regular_rows,
 <body>
 {regular_section}
 {playoff_section}
-  <footer>Auto-updated {generated_at} from the Sleeper API. Playoff results through {frozen_last} are entered by hand; see the README for how to update them. Hover any regular-season cell for that pair's matchup history.</footer>
+  <footer>Auto-updated {generated_at} from the Sleeper API. Playoff results through {frozen_last} are entered by hand; see the README for how to update them. Hover any cell in either table for that pair's matchup history.</footer>
 {TOOLTIP_SCRIPT}
 </body>
 </html>
@@ -809,20 +869,25 @@ def main():
     regular_pairs = [(w, l) for _s, _wk, w, l in all_regular_rows]
     regular_record, regular_managers = build_matrix(regular_pairs)
 
-    playoff_baseline_rows = load_playoff_baseline()
-    new_playoff_rows = gather_new_playoff_games(chain) if chain else []
+    playoff_baseline_rows, playoff_baseline_scores = load_playoff_baseline()
+    if chain:
+        new_playoff_rows, new_playoff_scores = gather_new_playoff_games(chain)
+    else:
+        new_playoff_rows, new_playoff_scores = [], {}
     all_playoff_rows = playoff_baseline_rows + new_playoff_rows
-    playoff_pairs = [(w, l) for _s, w, l in all_playoff_rows]
+    playoff_scores_by_game = {**playoff_baseline_scores, **new_playoff_scores}
+    playoff_pairs = [(w, l) for _s, _wk, w, l in all_playoff_rows]
     playoff_record, playoff_managers = build_matrix(playoff_pairs)
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     render_html(league_name, regular_record, regular_managers, all_regular_rows,
                 playoff_record, playoff_managers, all_playoff_rows, generated_at,
-                scores_by_game=scores_by_game)
+                scores_by_game=scores_by_game, playoff_scores_by_game=playoff_scores_by_game)
     print(f"Wrote {OUTPUT_HTML} for '{league_name}': regular season {len(all_regular_rows)} games "
           f"({len(new_rows)} newly pulled, {len(scores_by_game)} with a real score) across "
           f"{len(regular_managers)} managers; playoffs {len(all_playoff_rows)} games "
-          f"({len(new_playoff_rows)} newly pulled) across {len(playoff_managers)} managers.")
+          f"({len(new_playoff_rows)} newly pulled, {len(playoff_scores_by_game)} with a real score) "
+          f"across {len(playoff_managers)} managers.")
 
 
 if __name__ == "__main__":
