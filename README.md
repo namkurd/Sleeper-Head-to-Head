@@ -15,13 +15,10 @@ can be embedded live in the league's Google Site:
   (2021 through 2026 week 1), exactly as compiled from the league. **This
   file is never rewritten automatically**, so it's the permanent source of
   truth for everything already played and past totals never silently change.
-  Hovering any cell in the regular-season table shows that pair's full
-  chronological matchup history, including the actual score of each game
-  where it's still available, and if one manager has won 2 or more of
-  their last games in a row, that streak is called out in green at the
-  bottom of the tooltip. This is regular-season only; the playoff table
-  doesn't have reliable week numbers for the hand-entered years, so it's
-  left without tooltips.
+  Hovering any cell in either table shows that pair's full chronological
+  matchup history, including the actual score of each game where it's still
+  available, and if one manager has won 2 or more of their last games in a
+  row, that streak is called out in green at the bottom of the tooltip.
   - Scores are re-fetched live from Sleeper every run for every regular
     season week already in the baseline, not just new ones, purely to
     annotate the tooltip (win/loss totals always still come only from the
@@ -34,20 +31,27 @@ can be embedded live in the league's Google Site:
     games. One case like this exists today, already handled: Tommy's
     2023 roster.
 - `playoff_baseline.tsv` is the frozen **playoff** head-to-head record, with
-  columns `Season`, `Winner`, `Loser`. It covers 2010 through 2025, every
-  known postseason matchup from before this was tracked on Sleeper,
-  including the three seasons that ended in a 3-team championship (highest
-  score wins, and the other two each take a loss, so those seasons
-  contribute two results instead of one game). That format is retired now
-  that the league is 12 teams, so **2026 onward, playoff results are pulled
-  automatically** from Sleeper's own bracket data, the same as the regular
-  season.
+  columns `Season`, `Week`, `Winner`, `Loser`, `WinnerScore`, `LoserScore`.
+  It covers 2010 through 2025, every known postseason matchup from before
+  this was tracked on Sleeper, including the three seasons that ended in a
+  3-team championship (highest score wins, and the other two each take a
+  loss, so those seasons contribute two rows instead of one game -- winner
+  over each of the other two, sharing the same week and the winner's score,
+  each against the corresponding opponent's own score). That format is
+  retired now that the league is 12 teams, so **2026 onward, playoff results
+  are pulled automatically** from Sleeper's own bracket data, the same as
+  the regular season -- week and score included, so the tooltip keeps
+  working without any hand-entry once that kicks in.
   - 2010 and 2011 are incomplete: only the finals matchup is fully known
-    (Jake over Zak in 2010, Ryan over Alex in 2011). Whoever each finalist
-    beat in the semifinal to get there isn't recorded, so that extra win is
-    credited to the finalist's career total with no opponent attached
-    (`PLAYOFF_IMPLIED_WINS` near the top of `build_matrix.py`) and shown
-    with an asterisk on the playoff table instead of being guessed at.
+    (Jake over Zak in 2010, Ryan over Alex in 2011), and no week or score
+    survives for either, so those two cells don't get a tooltip. Whoever
+    each finalist beat in the semifinal to get there isn't recorded either,
+    so that extra win is credited to the finalist's career total with no
+    opponent attached (`PLAYOFF_IMPLIED_WINS` near the top of
+    `build_matrix.py`) and shown with an asterisk on the playoff table
+    instead of being guessed at. 2012's three games are known but scoreless
+    (no score was recorded for that year), so their tooltip rows show only
+    who won.
 - `build_matrix.py` runs on a schedule (weekly, Tuesday 5:30am Eastern, via
   GitHub Actions; see `.github/workflows/update.yml` to change the day or
   time, including the DST note in there since cron itself only speaks UTC).
