@@ -51,10 +51,13 @@ can be embedded live in the league's Google Site:
     credited to the finalist's career total with no opponent attached
     (`PLAYOFF_IMPLIED_WINS` near the top of `build_matrix.py`) and shown
     with an asterisk on the playoff table instead of being guessed at.
-- `build_matrix.py` runs on a schedule (weekly, Tuesday 5:30am Eastern, via
+- `build_matrix.py` runs on a schedule (weekly, early Tuesday morning, via
   GitHub Actions; see `.github/workflows/update.yml` to change the day or
-  time, including the DST note in there since cron itself only speaks UTC).
-  Each run:
+  times, since cron itself only speaks UTC). GitHub treats scheduled runs as
+  best-effort and can start them hours late, so it's set to run three times
+  (07:17, 08:47 and 10:17 UTC, i.e. before 5am Eastern for the first two in
+  both daylight and standard time). Every run recomputes everything and only
+  commits if something changed, so the extra runs are harmless. Each run:
   1. Auto-discovers the current season's Sleeper league (no league ID to
      update, ever; it looks up Ben's leagues for the current NFL season).
   2. Walks the league chain back through `previous_league_id` to confirm the
