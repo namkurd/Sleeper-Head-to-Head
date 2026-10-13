@@ -2,18 +2,25 @@ name: Update head-to-head record
 
 on:
   schedule:
-    # Weekly, Tuesday 5:30am Eastern (9:30 UTC), well after Monday Night
-    # Football and Sleeper's stats have settled -- the whole week's games
-    # are done by then. GitHub may delay this by a few minutes under load,
-    # which doesn't matter for a once-a-week job.
+    # Weekly on Tuesday, aimed to be done well before 5am Eastern. Monday Night
+    # Football is over by roughly midnight Eastern, so every one of these
+    # times is safely after the week's games have finished.
     #
-    # Cron is always UTC, and 9:30 UTC is only 5:30am Eastern during
-    # Daylight Time (EDT, roughly mid-March through early November). Once
-    # clocks fall back to Standard Time (EST) in November -- which happens
-    # mid-season -- this same line runs at 4:30am Eastern instead. If you
-    # want it to stay exactly 5:30am after that, change "30 9" to "30 10"
-    # once DST ends for the rest of the season.
-    - cron: "30 9 * * 2"
+    # GitHub treats cron as best-effort: it can start a run minutes to hours
+    # late (or occasionally skip one) when its runners are busy, and times on
+    # the hour/half hour are the busiest. So instead of one run, there are
+    # three staggered, off-peak runs. Every run recomputes everything from
+    # scratch and only commits if something changed, so extra runs are
+    # harmless -- whichever fires first does the work, the rest are no-ops
+    # (or pick up any late stat corrections).
+    #
+    # Cron is always UTC. These are chosen to land at 3:17am / 4:47am / 6:17am
+    # Eastern during Daylight Time (EDT, through Nov 1 2026), and 2:17 /
+    # 3:47 / 5:17am Eastern after clocks fall back (EST) -- so the first two
+    # are before 5am Eastern in both. No change needed when DST flips.
+    - cron: "17 7 * * 2"
+    - cron: "47 8 * * 2"
+    - cron: "17 10 * * 2"
   workflow_dispatch: {}   # lets you click "Run workflow" manually any time
   push:
     branches: [ main ]
