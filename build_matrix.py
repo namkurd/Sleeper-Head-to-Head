@@ -851,6 +851,7 @@ def render_html(league_name, regular_record, regular_managers, regular_rows,
 {playoff_section}
   <footer>Auto-updated {generated_at} from the Sleeper API. Playoff results through {frozen_last} are entered by hand; see the README for how to update them. Hover any cell in either table for that pair's matchup history.</footer>
 {TOOLTIP_SCRIPT}
+<script src="/shell/nav.js" defer></script>
 </body>
 </html>
 """
