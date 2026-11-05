@@ -615,7 +615,7 @@ PAGE_STYLE = """
     --border: rgba(11,11,11,0.10);
     --pos: #1f9d55;
   }
-  @media (prefers-color-scheme: dark) {
+  @media all { /* dark only */
     :root:not([data-theme="light"]) {
       color-scheme: dark;
       --surface: #1a1a19;
