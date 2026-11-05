@@ -226,11 +226,16 @@
     var td = e.target.closest(".tip-anchor");
     if (td && !td.contains(e.relatedTarget)) tip.style.display = "none";
   });
+  // phones have no mouseout: a tap anywhere else closes it
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".tip-anchor") && !e.target.closest("#cell-tooltip")) tip.style.display = "none";
+  });
 })();
 </script>
 
 <style>html{scroll-padding-top:var(--dtf-top-h,0px)}</style>
 <script>window.DTF_VIEWS = {"items": [{"label": "Regular season", "href": "#regular-season"}, {"label": "Playoffs", "href": "#playoffs"}]};</script>
+<script>window.DTF_TIPS = ["#cell-tooltip"];</script>
 <script src="/shell/nav.js" defer></script>
 </body>
 </html>
