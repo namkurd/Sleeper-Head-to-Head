@@ -44,6 +44,7 @@ import json
 import sys
 import urllib.request
 import urllib.error
+from urllib.parse import quote
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -481,7 +482,7 @@ def current_streak(games):
     return (last_winner, count) if count >= 2 else None
 
 
-def render_tooltip_html(a, b, games, scores_by_game=None):
+def render_tooltip_html(a, b, games, scores_by_game=None, replay=False):
     """Chronological matchup history between a and b, oldest first, with a
     green trailing-streak line at the bottom when one manager has won 2 or
     more of the most recent games in a row. When scores_by_game has an
@@ -497,7 +498,12 @@ def render_tooltip_html(a, b, games, scores_by_game=None):
         scores = (scores_by_game or {}).get((season, week, frozenset((a, b))))
         if scores and winner in scores and loser in scores:
             score_txt = f' ({scores[winner]:.1f}&ndash;{scores[loser]:.1f})'
-        row_parts.append(f'<div class="tip-row">{season} Wk{week} &mdash; {html.escape(winner)}{score_txt}</div>')
+        text = f'{season} Wk{week} &mdash; {html.escape(winner)}{score_txt}'
+        if replay:   # opens that week's win-probability replay in Rumble Central (names are resolved there)
+            href = f'/SleeperLiveRumbles/rumbles.html?season={season}&amp;wp={week}.{quote(winner)}.{quote(loser)}'
+            row_parts.append(f'<a class="tip-row tip-link" href="{href}">{text}<span class="tip-go">&rsaquo;</span></a>')
+        else:
+            row_parts.append(f'<div class="tip-row">{text}</div>')
     rows_html = "".join(row_parts)
     streak_html = ""
     streak = current_streak(games)
@@ -518,7 +524,7 @@ def natural_join(items):
 
 
 def render_table_section(record, managers, section_id, title, subtitle, implied_wins=None,
-                          incomplete_seasons=None, pair_histories=None, scores_by_game=None):
+                          incomplete_seasons=None, pair_histories=None, scores_by_game=None, replay=False):
     implied_wins = implied_wins or {}
     managers = sorted(set(managers) | set(implied_wins))
 
@@ -545,7 +551,7 @@ def render_table_section(record, managers, section_id, title, subtitle, implied_
         attrs = [f'style="background:{bg}"']
         if pair_histories is not None:
             games = pair_histories.get(frozenset((a, b)))
-            tip_html = render_tooltip_html(a, b, games, scores_by_game) if games else None
+            tip_html = render_tooltip_html(a, b, games, scores_by_game, replay) if games else None
             if tip_html:
                 attrs.append('class="tip-anchor"')
                 attrs.append(f'data-tip="{html.escape(tip_html, quote=True)}"')
@@ -717,9 +723,19 @@ PAGE_STYLE = """
     font-size: 12px;
     line-height: 1.5;
     box-shadow: 0 8px 24px rgba(0,0,0,0.18);
-    max-width: 240px;
-    pointer-events: none;
+    max-width: 260px;
   }
+  #cell-tooltip .tip-link {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    text-decoration: none;
+    margin: 0 -6px;
+    padding: 1px 6px;
+    border-radius: 5px;
+  }
+  #cell-tooltip .tip-link:hover, #cell-tooltip .tip-link:active { background: rgba(255,255,255,0.08); color: var(--ink); }
+  #cell-tooltip .tip-go { color: var(--muted); }
   #cell-tooltip .tip-head {
     font-weight: 700;
     margin-bottom: 6px;
@@ -755,6 +771,7 @@ TOOLTIP_SCRIPT = """
   document.addEventListener("mouseover", function (e) {
     var td = e.target.closest(".tip-anchor");
     if (!td) return;
+    clearTimeout(hideT);
     tip.innerHTML = td.getAttribute("data-tip");
     tip.style.display = "block";
     position(e);
@@ -762,9 +779,14 @@ TOOLTIP_SCRIPT = """
   document.addEventListener("mousemove", function (e) {
     if (tip.style.display === "block" && e.target.closest(".tip-anchor")) position(e);
   });
+  // the tooltip's rows are links (Rumble replays), so it stays open while the pointer is on it
+  var hideT = null;
+  function hideSoon() { clearTimeout(hideT); hideT = setTimeout(function () { tip.style.display = "none"; }, 220); }
+  tip.addEventListener("mouseenter", function () { clearTimeout(hideT); });
+  tip.addEventListener("mouseleave", hideSoon);
   document.addEventListener("mouseout", function (e) {
     var td = e.target.closest(".tip-anchor");
-    if (td && !td.contains(e.relatedTarget)) tip.style.display = "none";
+    if (td && !td.contains(e.relatedTarget)) hideSoon();
   });
   // phones have no mouseout: a tap anywhere else closes it
   document.addEventListener("click", function (e) {
@@ -798,6 +820,7 @@ def render_html(league_name, regular_record, regular_managers, regular_rows,
         regular_subtitle,
         pair_histories=pair_histories,
         scores_by_game=scores_by_game,
+        replay=True,
     )
 
     playoff_seasons = sorted({r[0] for r in playoff_rows}, key=int)
