@@ -766,6 +766,10 @@ TOOLTIP_SCRIPT = """
     var td = e.target.closest(".tip-anchor");
     if (td && !td.contains(e.relatedTarget)) tip.style.display = "none";
   });
+  // phones have no mouseout: a tap anywhere else closes it
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".tip-anchor") && !e.target.closest("#cell-tooltip")) tip.style.display = "none";
+  });
 })();
 </script>
 """
@@ -852,6 +856,7 @@ def render_html(league_name, regular_record, regular_managers, regular_rows,
   <footer>Auto-updated {generated_at} from the Sleeper API. Playoff results through {frozen_last} are entered by hand; see the README for how to update them. Hover any cell in either table for that pair's matchup history.</footer>
 {TOOLTIP_SCRIPT}
 <style>html{{scroll-padding-top:var(--dtf-top-h,0px)}}</style>
+<script>window.DTF_TIPS = ["#cell-tooltip"];</script>
 <script>window.DTF_VIEWS = {{"items": [{{"label": "Regular season", "href": "#regular-season"}}, {{"label": "Playoffs", "href": "#playoffs"}}]}};</script>
 <script src="/shell/nav.js" defer></script>
 </body>
