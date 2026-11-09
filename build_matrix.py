@@ -482,6 +482,9 @@ def current_streak(games):
     return (last_winner, count) if count >= 2 else None
 
 
+REPLAY_FROM_SEASON = 2021   # Rumble Central's archive (and so its replays) starts with the 2021 season
+
+
 def render_tooltip_html(a, b, games, scores_by_game=None, replay=False):
     """Chronological matchup history between a and b, oldest first, with a
     green trailing-streak line at the bottom when one manager has won 2 or
@@ -499,7 +502,7 @@ def render_tooltip_html(a, b, games, scores_by_game=None, replay=False):
         if scores and winner in scores and loser in scores:
             score_txt = f' ({scores[winner]:.1f}&ndash;{scores[loser]:.1f})'
         text = f'{season} Wk{week} &mdash; {html.escape(winner)}{score_txt}'
-        if replay:   # opens that week's win-probability replay in Rumble Central (names are resolved there)
+        if replay and int(season) >= REPLAY_FROM_SEASON:   # opens that week's win-probability replay in Rumble Central (names are resolved there)
             href = f'/SleeperLiveRumbles/rumbles.html?season={season}&amp;wp={week}.{quote(winner)}.{quote(loser)}'
             row_parts.append(f'<a class="tip-row tip-link" href="{href}">{text}<span class="tip-go">&rsaquo;</span></a>')
         else:
@@ -861,6 +864,7 @@ def render_html(league_name, regular_record, regular_managers, regular_rows,
         incomplete_seasons=incomplete_seasons,
         pair_histories=playoff_pair_histories,
         scores_by_game=playoff_scores_by_game,
+        replay=True,      # playoff games from 2021 on link to their replay too (older ones have none)
     )
 
     page_html = f"""<!doctype html>
