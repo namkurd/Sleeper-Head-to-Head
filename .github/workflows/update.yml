@@ -2,25 +2,11 @@ name: Update head-to-head record
 
 on:
   schedule:
-    # Weekly on Tuesday, aimed to be done well before 5am Eastern. Monday Night
-    # Football is over by roughly midnight Eastern, so every one of these
-    # times is safely after the week's games have finished.
-    #
-    # GitHub treats cron as best-effort: it can start a run minutes to hours
-    # late (or occasionally skip one) when its runners are busy, and times on
-    # the hour/half hour are the busiest. So instead of one run, there are
-    # three staggered, off-peak runs. Every run recomputes everything from
-    # scratch and only commits if something changed, so extra runs are
-    # harmless -- whichever fires first does the work, the rest are no-ops
-    # (or pick up any late stat corrections).
-    #
-    # Cron is always UTC. These are chosen to land at 3:17am / 4:47am / 6:17am
-    # Eastern during Daylight Time (EDT, through Nov 1 2026), and 2:17 /
-    # 3:47 / 5:17am Eastern after clocks fall back (EST) -- so the first two
-    # are before 5am Eastern in both. No change needed when DST flips.
-    - cron: "17 7 * * 2"
-    - cron: "47 8 * * 2"
-    - cron: "17 10 * * 2"
+    # Weekly sync: every weekly data job retries hourly from Tuesday morning through Wednesday morning (UTC), because GitHub's scheduler
+    # runs cron jobs hours late or skips them. Extra runs are harmless: they only commit when something changed.
+    # (Monday Night Football is over by about 05:00 UTC Tuesday, so 08:00 UTC on is safely after the week.)
+    - cron: "17 8-23 * * 2"
+    - cron: "17 0-12 * * 3"
   workflow_dispatch: {}   # lets you click "Run workflow" manually any time
   push:
     branches: [ main ]
@@ -32,6 +18,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: update-h2h
+  cancel-in-progress: false
 
 jobs:
   update:
