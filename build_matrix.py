@@ -872,7 +872,7 @@ def render_html(league_name, regular_record, regular_managers, regular_rows,
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{league_name} &ndash; Head-to-Head Records</title>
+<title>Head-to-Head &middot; {league_name}</title>
 <style>
 {PAGE_STYLE}
 </style>
