@@ -102,10 +102,10 @@ and GitHub Actions' built-in token is what commits the update.
 ## Rumbles live standings (`rumbles.html`)
 
 "Rumbles" is the league's own custom weekly scoring system, on top of normal
-head-to-head wins and losses: winning your head-to-head matchup is worth 9
-Rumbles, plus 1 more Rumble for every other team in the league you outscore
-that week (a 12-team round robin, so up to 20 Rumbles in a single week: 9 for
-the win plus 11 for having the top score). They're cumulative over the
+head-to-head wins and losses: winning your head-to-head matchup is worth 10
+Rumbles, plus 1 more Rumble for each additional team in the league you outscore
+that week (a 12-team round robin, so up to 20 Rumbles in a single week: 10 for
+the win plus 10 for having the top score). They're cumulative over the
 season. This page shows the running standings built entirely from that
 formula, live.
 
